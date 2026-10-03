@@ -5,6 +5,7 @@ namespace PetService;
 public sealed class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 1;
+    // Binds the saved credential to its issuing service. Requests use the bundled URL.
     public string ServiceUrl { get; set; } = "";
     public string DeviceToken { get; set; } = "";
     public string PetId { get; set; } = "";

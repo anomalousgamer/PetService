@@ -40,7 +40,6 @@ public sealed class Plugin : IDalamudPlugin
     private Task<SyncResult>? syncTask;
     private long syncRevision;
     private Task<PairResult>? pairTask;
-    private string pairingUrl = "";
     private long nextSync, nextEvaluation, nextDisplayedAttempt;
     private bool previousLogin, localRelease, disposed;
     private string sessionId = "", loginAt = "", loginSource = "";
@@ -48,7 +47,8 @@ public sealed class Plugin : IDalamudPlugin
     internal string SaveError { get; private set; } = "";
     internal string ScheduleError { get; private set; } = "";
     internal bool NetworkBusy => pairTask is not null || syncTask is not null;
-    internal bool IsPaired => Configuration.DeviceToken.Length > 0 && !Configuration.Revoked;
+    internal bool IsPaired => Configuration.DeviceToken.Length > 0 && !Configuration.Revoked
+        && ServiceClient.MatchesBundledService(Configuration.ServiceUrl);
     internal bool KillSwitchOn => !masterInput.Enabled;
     internal bool Ready => ClientState.IsLoggedIn && Player.IsLoaded && Objects.LocalPlayer is not null
         && !Condition[ConditionFlag.BetweenAreas] && !Condition[ConditionFlag.BetweenAreas51];
@@ -67,6 +67,8 @@ public sealed class Plugin : IDalamudPlugin
         Configuration.Reminders ??= []; Configuration.Prompts ??= []; Configuration.Outbox ??= [];
         masterInput=new(Configuration.Enabled);
         if(KillSwitchOn)ServiceStatus="Kill switch is on. Master input and status sharing are paused.";
+        else if(Configuration.DeviceToken.Length>0 && !ServiceClient.MatchesBundledService(Configuration.ServiceUrl))
+            ServiceStatus="This pairing belongs to a different service. Request a new pairing code to connect.";
         nativeChat=new(GameGui,Log);
         chatCommands=new(Interop,()=>HasVisibleReminder && input is not null && input.IsCapturing,Chat,Log);
         movement=new(Interop,()=>HasVisibleReminder && input is not null && input.IsCapturing,Log);
@@ -103,11 +105,12 @@ public sealed class Plugin : IDalamudPlugin
             return false;
         }
     }
-    internal void Pair(string url,string code)
+    internal void Pair(string code)
     {
         if(NetworkBusy)return;
-        try {ServiceClient.Endpoint(url,"/api/pair");pairingUrl=url.TrimEnd('/');pairTask=service.Pair(pairingUrl,code,cancel.Token);ServiceStatus="Pairing…";}
-        catch(ServiceFailure e){ServiceStatus=e.Message;}
+        code=code.Trim();
+        if(code.Length==0){ServiceStatus="Enter the one-time pairing code supplied by your master.";return;}
+        pairTask=service.Pair(code,cancel.Token);ServiceStatus="Pairing…";
     }
     internal void ReleaseSession()
     {
@@ -130,12 +133,12 @@ public sealed class Plugin : IDalamudPlugin
         }
         if(masterInput.Enabled || !Mutate(c=>c.Enabled=true))return;
         masterInput.SetEnabled(true);localRelease=false;nextSync=0;nextEvaluation=0;
-        ServiceStatus=IsPaired ? "Resuming connection… Pending prompts may return." : "Not paired. Enter the service URL and pairing code.";
+        ServiceStatus=IsPaired ? "Resuming connection… Pending prompts may return." : "Not paired. Enter the one-time pairing code supplied by your master.";
     }
     internal void Unpair()
     {
         if(NetworkBusy)return;
-        if(Mutate(c=>{c.DeviceToken="";c.PetId="";c.PetName="";c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;c.Revoked=false;}))
+        if(Mutate(c=>{c.ServiceUrl="";c.DeviceToken="";c.PetId="";c.PetName="";c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;c.Revoked=false;}))
         {input.Release();ServiceStatus="Unpaired. Request a new pairing code to reconnect.";}
     }
     internal void Choose(string action,string? reply=null)
@@ -183,7 +186,7 @@ public sealed class Plugin : IDalamudPlugin
                 nextSync=Environment.TickCount64+5000;
                 var batch=JsonSerializer.Deserialize<List<Choice>>(JsonSerializer.Serialize(Configuration.Outbox.Take(20),ServiceClient.Json),ServiceClient.Json)!;
                 syncRevision=masterInput.Revision;
-                syncTask=service.Sync(Configuration.ServiceUrl,Configuration.DeviceToken,Observe(),batch,masterInput.RequestCancellation);
+                syncTask=service.Sync(Configuration.DeviceToken,Observe(),batch,masterInput.RequestCancellation);
             }
             if(HasVisibleReminder)input.SuppressKeyboardOnFrameworkUpdate();else input.Release();
         } catch {input.Release();ScheduleError="Could not evaluate the current schedule or game state. Open settings to inspect the connection; emergency release remains available.";}
@@ -195,10 +198,10 @@ public sealed class Plugin : IDalamudPlugin
             try {
                 var result=task.GetAwaiter().GetResult();
                 if(!Guid.TryParse(result.PetId,out _) || result.Token.Length!=43)throw new ServiceFailure("Invalid pairing response.");
-                if(Mutate(c=>{c.ServiceUrl=pairingUrl;c.DeviceToken=result.Token;c.PetId=result.PetId;c.PetName=result.PetName;c.Revoked=false;c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.ClockOffsetMilliseconds=0;}))
+                if(Mutate(c=>{c.ServiceUrl=ServiceClient.BaseUrl;c.DeviceToken=result.Token;c.PetId=result.PetId;c.PetName=result.PetName;c.Revoked=false;c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;}))
                 {ServiceStatus=KillSwitchOn ? "Paired. Kill switch remains on; master input and status sharing are paused." : "Paired. Synchronizing…";nextSync=0;}
                 else ServiceStatus="Pairing succeeded remotely, but the credential could not be saved. Fix the save problem and request a new !pair code.";
-            } catch {ServiceStatus="Pairing failed. Check the HTTPS URL, code, and service availability. Request a fresh !pair code if necessary.";}
+            } catch {ServiceStatus="Pairing failed. Check the code and service availability. Request a fresh pairing code from your master if necessary.";}
         }
         if(syncTask is {IsCompleted:true}) {
             var task=syncTask;syncTask=null;

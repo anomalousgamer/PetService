@@ -7,12 +7,11 @@ namespace PetService.Windows;
 internal sealed class SettingsWindow : Window
 {
     private readonly Plugin plugin;
-    private string url, code = "";
+    private string code = "";
 
     public SettingsWindow(Plugin plugin) : base("Pet Service setup")
     {
         this.plugin = plugin;
-        url = plugin.Configuration.ServiceUrl;
         SizeConstraints = new() { MinimumSize = new Vector2(440, 240), MaximumSize = new Vector2(float.MaxValue) };
         Size = new Vector2(480, 310);
         SizeCondition = ImGuiCond.FirstUseEver;
@@ -38,10 +37,9 @@ internal sealed class SettingsWindow : Window
         if (!plugin.IsPaired)
         {
             ImGui.Spacing();
-            ImGui.InputText("HTTPS service URL", ref url, 400);
             ImGui.InputText("One-time pairing code", ref code, 80, ImGuiInputTextFlags.Password);
-            ImGui.BeginDisabled(plugin.NetworkBusy);
-            if (ImGui.Button("Pair")) { plugin.Pair(url, code); code = ""; }
+            ImGui.BeginDisabled(plugin.NetworkBusy || string.IsNullOrWhiteSpace(code));
+            if (ImGui.Button("Pair")) { plugin.Pair(code); code = ""; }
             ImGui.EndDisabled();
             ImGui.TextWrapped("Setup is saved for future logins. This shares character status, zone/world/DC, and explicit popup replies with the master, including on alts. Ordinary game chat is not collected.");
         }

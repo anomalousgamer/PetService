@@ -5,6 +5,7 @@
 - Private pet/master roleplay with Discord and website administration.
 - Install and update through a custom Dalamud repository.
 - Pair once with the private service and reconnect automatically on future logins.
+- Code-only pairing with the service connection built into the plugin.
 - Minimal pet window with setup, connection status, kill switch, and unpair.
 - Custom master messages with popup replies and 10-minute snooze.
 - Centrally configured daily medication reminders with time-zone support and

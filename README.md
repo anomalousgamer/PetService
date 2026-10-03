@@ -19,8 +19,8 @@ plugin source and its Dalamud repository manifest.
 2. Add [https://raw.githubusercontent.com/anomalousgamer/PetService/main/repo.json](https://raw.githubusercontent.com/anomalousgamer/PetService/main/repo.json).
 3. Enable the repository and save the settings.
 4. Open **/xlplugins**, refresh, search **Pet Service**, and click **Install**.
-5. Type **/petservice** and enter the HTTPS service URL and one-time pairing code
-   supplied by the master.
+5. Type **/petservice** and enter the one-time pairing code supplied by the master.
+   The service address is built in; no website address is needed during setup.
 6. Pairing is saved and reconnects automatically after future logins until revoked
    or paused with the local kill switch.
 

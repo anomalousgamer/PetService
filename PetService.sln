@@ -5,7 +5,7 @@ VisualStudioVersion = 18.10.12224.181 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PetService", "PetService\PetService.csproj", "{85AC3397-8C30-4C00-BEB7-75EFD2BA842A}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{92CBBEB5-F36E-40B2-888C-DF9A870DCEA3}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{381A86AC-B51F-4DB2-B850-3E5666B2EADE}"
 	ProjectSection(SolutionItems) = preProject
 		CHANGELOG.md = CHANGELOG.md
 		README.md = README.md
@@ -37,8 +37,5 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {590F595F-ABE5-406E-9E5A-7272D6AC4F11}
 	EndGlobalSection
 EndGlobal

@@ -7,7 +7,7 @@
     <IconUrl>https://raw.githubusercontent.com/anomalousgamer/PetService/main/images/icon.png</IconUrl>
     <Name>Pet Service</Name>
     <Punchline>Consensual pet/master roleplay, messages, and shared routines.</Punchline>
-    <Description>A private FFXIV tool for consensual pet/master roleplay and power dynamics.</Description>
+    <Description>A private FFXIV tool for consensual pet/master roleplay and power dynamics. Masters manage messages and reminders through Discord or a private portal, while pets receive interactive prompts in game. Includes replies, snoozing, shared status and location, and a local kill switch controlled by the pet.</Description>
     <Tags>roleplay;pet;master;private;reminder</Tags>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks><Platforms>x64</Platforms><PlatformTarget>x64</PlatformTarget>
