@@ -53,6 +53,8 @@ public sealed class Plugin : IDalamudPlugin
     internal bool IsPaired => Configuration.DeviceToken.Length > 0 && !Configuration.Revoked
         && ServiceClient.MatchesBundledService(Configuration.ServiceUrl);
     internal bool KillSwitchOn => !masterInput.Enabled;
+    internal bool CanCallMaster=>IsPaired && !KillSwitchOn && Ready && Environment.TickCount64>=nextAttentionRequest;
+    internal int CallCooldownSeconds=>(int)Math.Max(0,(nextAttentionRequest-Environment.TickCount64+999)/1000);
     internal bool Ready => ClientState.IsLoggedIn && Player.IsLoaded && Objects.LocalPlayer is not null
         && !Condition[ConditionFlag.BetweenAreas] && !Condition[ConditionFlag.BetweenAreas51];
     internal DateTimeOffset Now => DateTimeOffset.UtcNow.AddMilliseconds(Configuration.ClockOffsetMilliseconds);
@@ -83,7 +85,7 @@ public sealed class Plugin : IDalamudPlugin
         ui.DisableAutomaticUiHide=true;ui.DisableUserUiHide=true;ui.DisableCutsceneUiHide=true;ui.DisableGposeUiHide=true;
         ui.Draw+=Draw;ui.OpenConfigUi+=OpenSettings;ui.OpenMainUi+=OpenSettings;
         ClientState.Login+=OnLogin; Framework.Update+=Update;
-        Commands.AddHandler("/petservice",new CommandInfo(Command) {HelpMessage="Open setup. /petservice off: confirm kill switch. /petservice on: resume. /petservice release: safe mode for this login. /petservice request: request the master's attention."});
+        Commands.AddHandler("/petservice",new CommandInfo(Command) {HelpMessage="Open Pet/Master pages. /petservice off: confirm kill switch. /petservice on: resume. /petservice release: safe mode for this login. /petservice call or request: call the master."});
         previousLogin=ClientState.IsLoggedIn;
         if(previousLogin)StartSession("first-observed");
         if(!IsPaired)settings.IsOpen=true;
@@ -98,6 +100,7 @@ public sealed class Plugin : IDalamudPlugin
             case "on":SetEnabled(true);break;
             case "release":ReleaseSession();break;
             case "request":RequestAttention();break;
+            case "call":RequestAttention();break;
             default:OpenSettings();break;
         }
     }
@@ -151,7 +154,7 @@ public sealed class Plugin : IDalamudPlugin
         nextSafetySync=0;
         ServiceStatus="Kill switch is on. Master input and status sharing are paused.";
     }
-    private void RequestAttention()
+    internal void RequestAttention()
     {
         if(!IsPaired || KillSwitchOn || !Ready){Chat.Print("Pet Service: pair and resume the plugin before requesting attention.");return;}
         if(Environment.TickCount64<nextAttentionRequest){Chat.Print("Pet Service: wait a minute between attention requests.");return;}
@@ -166,11 +169,14 @@ public sealed class Plugin : IDalamudPlugin
         if(Mutate(c=>{c.ServiceUrl="";c.DeviceToken="";c.PetId="";c.PetName="";c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.SafetyOutbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;c.Revoked=false;}))
         {input.Release();ServiceStatus="Unpaired. Request a new pairing code to reconnect.";}
     }
-    internal void Choose(string action,string? reply=null,int? minutes=null)
+    internal void Choose(string action,string? reply=null,int? minutes=null,int? optionIndex=null)
     {
         var prompt=CurrentPrompt;if(prompt is null)return;
         if(action=="snooze" && !SnoozePolicy.IsValid(minutes))return;
-        var choice=new Choice{OccurrenceId=prompt.Id,Action=action,ClientAtUtc=LocalState.Stamp(Now),Minutes=action=="snooze"?minutes:null,Reply=reply};
+        if(action=="choice" && !ReplyChoicePolicy.Allows(prompt,optionIndex))return;
+        if(action=="reply" && (!prompt.AllowReply || string.IsNullOrWhiteSpace(reply)))return;
+        var choice=new Choice{OccurrenceId=prompt.Id,Action=action,ClientAtUtc=LocalState.Stamp(Now),Minutes=action=="snooze"?minutes:null,Reply=reply,
+            OptionIndex=action=="choice"?optionIndex:null};
         if(Mutate(c=>{LocalState.Apply(c.Prompts.Single(p=>p.Id==prompt.Id),choice);c.Outbox.Add(choice);})) {nextSync=0;if(!HasVisibleReminder)input.Release();}
     }
     internal void MarkDisplayed()
@@ -190,7 +196,8 @@ public sealed class Plugin : IDalamudPlugin
         if(!ready)return o;
         o.CharacterName=Player.CharacterName;o.HomeWorld=Player.HomeWorld.Value.Name.ToString();o.CurrentWorld=Player.CurrentWorld.Value.Name.ToString();
         o.DataCenter=Player.CurrentWorld.Value.DataCenter.Value.Name.ToString();o.TerritoryId=ClientState.TerritoryType;
-        o.Zone=Data.GetExcelSheet<TerritoryType>()?.GetRowOrDefault(o.TerritoryId)?.PlaceName.Value.Name.ToString() ?? "Unknown";
+        var ordinaryZone=Data.GetExcelSheet<TerritoryType>()?.GetRowOrDefault(o.TerritoryId)?.PlaceName.Value.Name.ToString() ?? "Unknown";
+        o.Zone=HousingLocation.Observe(o.TerritoryId,ordinaryZone);
         o.InDuty=Condition[ConditionFlag.BoundByDuty]||Condition[ConditionFlag.BoundByDuty56]||Condition[ConditionFlag.BoundByDuty95];
         o.InCombat=Condition[ConditionFlag.InCombat];o.IsAfk=Player.IsAwayFromKeyboard;o.GameIdle=ClientState.IsClientIdle();return o;
     }
@@ -273,14 +280,15 @@ public sealed class Plugin : IDalamudPlugin
     }
     private void Draw()
     {try {windows.Draw();}catch{input.Release();}}
-    internal void CaptureInput(bool editing,bool mouseOverChat)=>input.CaptureRenderedFrame(editing,mouseOverChat);
+    internal void CaptureInput(bool editing,bool mouseOverChat)=>input.CaptureRenderedFrame(editing || settings.EditingText,mouseOverChat);
+    internal void FocusGameChat(){settings.ClearTextFocus();nativeChat.FocusInput();}
     internal void ReleaseInput()=>input.Release();
     public void Dispose()
     {
         disposed=true;cancel.Cancel();masterInput.Dispose();input.Release();
         PluginInterface.UiBuilder.Draw-=Draw;PluginInterface.UiBuilder.OpenConfigUi-=OpenSettings;PluginInterface.UiBuilder.OpenMainUi-=OpenSettings;
         ClientState.Login-=OnLogin;Framework.Update-=Update;Commands.RemoveHandler("/petservice");
-        windows.RemoveAllWindows();chatCommands.Dispose();movement.Dispose();service.Dispose();cancel.Dispose();
+        settings.Dispose();windows.RemoveAllWindows();chatCommands.Dispose();movement.Dispose();service.Dispose();cancel.Dispose();
         // A final logout heartbeat cannot be guaranteed during unload/crash. The
         // service marks observations stale after 45 seconds instead of assuming logout.
     }

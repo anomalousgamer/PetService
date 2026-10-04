@@ -46,7 +46,8 @@ public static class LocalState
         if (choice.Action == "displayed") prompt.DisplayedAtUtc ??= choice.ClientAtUtc;
         else if (choice.Action == "snooze" && prompt.ResolvedAtUtc is null && SnoozePolicy.IsValid(choice.Minutes))
             prompt.SnoozedUntilUtc = Stamp(Parse(choice.ClientAtUtc).AddMinutes(choice.Minutes!.Value));
-        else if (choice.Action is "taken" or "acknowledge" or "reply")
+        else if (choice.Action is "taken" or "acknowledge" || (choice.Action=="reply" && prompt.AllowReply)
+            || (choice.Action=="choice" && ReplyChoicePolicy.Allows(prompt,choice.OptionIndex)))
         { prompt.ResolvedAtUtc=choice.ClientAtUtc; prompt.Resolution=choice.Action; prompt.SnoozedUntilUtc=null; }
     }
     public static List<Prompt> Merge(List<Prompt> local, SyncResult server, List<Choice> remaining)

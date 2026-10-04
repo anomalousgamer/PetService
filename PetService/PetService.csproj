@@ -1,13 +1,13 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.1.0.1</Version>
-    <AssemblyVersion>0.1.0.1</AssemblyVersion>
+    <Version>0.1.0.2</Version>
+    <AssemblyVersion>0.1.0.2</AssemblyVersion>
     <Author>Anomaly</Author>
     <RepoUrl>https://github.com/anomalousgamer/PetService</RepoUrl>
     <IconUrl>https://raw.githubusercontent.com/anomalousgamer/PetService/main/images/icon.png</IconUrl>
     <Name>Pet Service</Name>
     <Punchline>Consensual pet/master roleplay, messages, and shared routines.</Punchline>
-    <Description>A private FFXIV tool for consensual pet/master roleplay and power dynamics. Masters manage messages and reminders through Discord or a private portal, while pets receive interactive prompts in game. Includes replies, snoozing, shared status and location, and a local kill switch controlled by the pet.</Description>
+    <Description>A private FFXIV tool for consensual pet/master roleplay and power dynamics. Masters manage messages and reminders through Discord, the website, or the in-game Master page. Pets receive interactive prompts with replies, snoozing, shared status and location, and a local kill switch.</Description>
     <Tags>roleplay;pet;master;private;reminder</Tags>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks><Platforms>x64</Platforms><PlatformTarget>x64</PlatformTarget>

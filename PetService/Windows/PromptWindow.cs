@@ -10,226 +10,144 @@ internal sealed class PromptWindow : Window
 {
     private readonly Plugin plugin;
     private string? lastPromptId;
-    private bool wasVisible;
+    private bool wasVisible,editingPrompt,mouseOverChat,drawFailed;
     private long appearedAt;
-    private string reply = "";
-    private int snoozeMinutes = SnoozePolicy.DefaultMinutes;
-    private bool pushedStyle;
-    private bool editingPrompt;
-    private bool mouseOverChat;
-    private bool drawFailed;
-    private NativeChatState chatState;
-    private const ImGuiWindowFlags ShieldFlags = ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove
-        | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoCollapse
-        | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoScrollbar
-        | ImGuiWindowFlags.NoScrollWithMouse | ImGuiWindowFlags.NoFocusOnAppearing
-        | ImGuiWindowFlags.NoBackground;
+    private string reply="";
+    private int snoozeMinutes=SnoozePolicy.DefaultMinutes;
+    private const ImGuiWindowFlags PromptFlags=ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove
+        | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoSavedSettings
+        | ImGuiWindowFlags.NoFocusOnAppearing;
 
-    public PromptWindow(Plugin plugin) : base("Pet Service###PetServiceShield")
+    public PromptWindow(Plugin plugin) : base("Pet Service###PetServicePrompt")
     {
-        this.plugin = plugin;
-        IsOpen = true;
-        ShowCloseButton = false;
-        RespectCloseHotkey = false;
-        AllowClickthrough = false;
-        AllowPinning = false;
-        ForceMainWindow = true;
-        InhibitAtkCollision = true;
-        DisableWindowSounds = true;
-        DisableFadeInFadeOut = true;
-        Flags = ShieldFlags;
+        this.plugin=plugin;
+        IsOpen=true;ShowCloseButton=false;RespectCloseHotkey=false;
+        AllowClickthrough=false;AllowPinning=false;ForceMainWindow=true;
+        InhibitAtkCollision=true;DisableWindowSounds=true;DisableFadeInFadeOut=true;
+        Flags=PromptFlags;
     }
-
     public override bool DrawConditions()
     {
-        if (plugin.HasVisibleReminder)
-            return true;
-        wasVisible = false;
-        editingPrompt = false;
-        return false;
+        if(plugin.HasVisibleReminder)return true;
+        wasVisible=false;editingPrompt=false;return false;
     }
-
     public override void PreDraw()
     {
-        var viewport = ImGui.GetMainViewport();
-        chatState = plugin.ChatState;
-        mouseOverChat = chatState.Available
-            && chatState.InputArea.Contains(ImGui.GetIO().MousePos - viewport.Pos);
-        if (mouseOverChat && editingPrompt)
-        {
-            ImGuiP.ClearActiveID();
-            editingPrompt = false;
+        var viewport=ImGui.GetMainViewport();
+        var chat=plugin.ChatState;
+        var mouse=ImGui.GetIO().MousePos-viewport.Pos;
+        mouseOverChat=chat.Available && (chat.InputArea.Contains(mouse) || chat.LogArea.Contains(mouse));
+        if(mouseOverChat && ImGui.IsMouseClicked(ImGuiMouseButton.Left)) {
+            ImGuiP.ClearActiveID();editingPrompt=false;
         }
-        // Only the native chat input rectangle can receive mouse input.
-        Flags = ShieldFlags | (mouseOverChat || drawFailed ? ImGuiWindowFlags.NoInputs : 0);
-        InhibitAtkCollision = !mouseOverChat && !drawFailed;
-        Position = viewport.Pos;
-        PositionCondition = ImGuiCond.Always;
-        Size = viewport.Size;
-        SizeCondition = ImGuiCond.Always;
-        var occurrence = plugin.CurrentPrompt;
-        if (!wasVisible || occurrence?.Id != lastPromptId)
-        {
-            appearedAt = Environment.TickCount64;
-            reply = "";
-            snoozeMinutes = SnoozePolicy.DefaultMinutes;
-            lastPromptId = occurrence?.Id;
-            editingPrompt = false;
-            // Focus ImGui for controller navigation. Native chat keeps keyboard
-            // input because InputGuard leaves WantTextInput off outside our field.
-            ImGui.SetNextWindowFocus();
+        var prompt=plugin.CurrentPrompt;
+        if(!wasVisible || prompt?.Id!=lastPromptId) {
+            appearedAt=Environment.TickCount64;reply="";snoozeMinutes=SnoozePolicy.DefaultMinutes;
+            lastPromptId=prompt?.Id;editingPrompt=false;
+            // Keep existing game-chat focus. A prompt appearing must not take it.
         }
-        wasVisible = true;
-        ImGui.PushStyleColor(ImGuiCol.ChildBg, new Vector4(0.025f, 0.03f, 0.045f, 1f));
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0f);
-        pushedStyle = true;
-        if (!drawFailed)
-            plugin.CaptureInput(editingPrompt, mouseOverChat);
+        wasVisible=true;
+        var scale=ImGuiHelpers.GlobalScale;
+        var size=Vector2.Min(new Vector2(580,(prompt?.Kind=="reminder" ? 360 : 540))*scale,
+            Vector2.Max(new Vector2(1),viewport.Size-new Vector2(32)*scale));
+        var position=viewport.Pos+(viewport.Size-size)/2f;
+        if(chat.Available && Overlap(position-viewport.Pos,size,chat.InputArea)>0) {
+            var gap=8*scale;
+            var above=Math.Clamp(chat.InputArea.Minimum.Y-gap,0,viewport.Size.Y);
+            var bottom=Math.Clamp(chat.InputArea.Maximum.Y+gap,0,viewport.Size.Y);
+            var below=viewport.Size.Y-bottom;
+            var left=Math.Clamp(chat.InputArea.Minimum.X-gap,0,viewport.Size.X);
+            var right=Math.Clamp(chat.InputArea.Maximum.X+gap,0,viewport.Size.X);
+            if(above>=size.Y)position.Y=viewport.Pos.Y+above-size.Y;
+            else if(below>=size.Y)position.Y=viewport.Pos.Y+bottom;
+            else if(left>=size.X)position.X=viewport.Pos.X+left-size.X;
+            else if(viewport.Size.X-right>=size.X)position.X=viewport.Pos.X+right;
+            else if(Math.Max(above,below)>=260*scale) {
+                // Scroll the contents in a shorter window when the chat input
+                // is placed near the middle of a smaller game viewport.
+                size.Y=Math.Min(size.Y,Math.Max(above,below));
+                position.Y=viewport.Pos.Y+(above>=below ? above-size.Y : bottom);
+            }
+        }
+        Position=position;PositionCondition=ImGuiCond.Always;
+        Size=size;SizeCondition=ImGuiCond.Always;
+        Flags=PromptFlags | (drawFailed ? ImGuiWindowFlags.NoInputs : 0);
+        InhibitAtkCollision=!drawFailed;
+        if(!drawFailed)plugin.CaptureInput(editingPrompt,mouseOverChat);
     }
-
     public override void Draw()
     {
-        try
-        {
-            DrawPrompt();
-        }
-        catch
-        {
-            // WindowSystem catches Draw errors internally. Release here before
-            // it replaces this window with its error UI on subsequent frames.
-            drawFailed = true;
-            plugin.ReleaseInput();
-            throw;
-        }
+        try {DrawPrompt();}
+        catch {drawFailed=true;plugin.ReleaseInput();throw;}
     }
-
     private void DrawPrompt()
     {
-        var viewport = ImGui.GetMainViewport();
-        DrawBackdrop(viewport.Pos, viewport.Size);
-        var prompt = plugin.CurrentPrompt;
-        if (prompt is null) return;
-        var scale = ImGuiHelpers.GlobalScale;
-        var available = ImGui.GetContentRegionAvail();
-        var panelSize = new Vector2(MathF.Min(900f * scale, available.X), MathF.Min(690f * scale, available.Y));
-        var panelPosition = PlacePanel(viewport.Pos + ImGui.GetCursorPos(), available, ref panelSize);
-        ImGui.SetCursorPos(panelPosition - viewport.Pos);
-        if (ImGui.BeginChild("PetServicePanel", panelSize, true,
-            mouseOverChat ? ImGuiWindowFlags.NoInputs : ImGuiWindowFlags.None))
-        {
-            try
-            {
-                plugin.MarkDisplayed();
-                ImGui.SetWindowFontScale(1.3f);
-                ImGui.TextUnformatted(prompt.Kind == "reminder" ? "Daily medication reminder" : "Message from Master");
-                ImGui.SetWindowFontScale(1f);
-                ImGui.Separator();
-                ImGui.Spacing();
-                ImGui.SetWindowFontScale(1.65f);
-                ImGui.PushTextWrapPos(0);
-                ImGui.TextUnformatted(prompt.Kind == "reminder" ? prompt.Label : prompt.Text);
-                ImGui.PopTextWrapPos();
-                ImGui.SetWindowFontScale(1f);
-                ImGui.Spacing();
-                var armed = Environment.TickCount64 - appearedAt >= 500;
-                editingPrompt = false;
-                if (prompt.Kind == "message")
-                {
-                    ImGui.InputTextMultiline("Reply", ref reply, 1000, new Vector2(-1, 105 * scale));
-                    editingPrompt = ImGui.IsItemActive();
-                    ImGui.BeginDisabled(!armed || string.IsNullOrWhiteSpace(reply));
-                    if (ImGui.Button("Send reply", new Vector2(-1, 36 * scale))) plugin.Choose("reply", reply);
+        var prompt=plugin.CurrentPrompt;
+        if(prompt is null)return;
+        var scale=ImGuiHelpers.GlobalScale;
+        plugin.MarkDisplayed();
+        ImGui.SetWindowFontScale(1.2f);
+        ImGui.TextUnformatted(prompt.Kind=="reminder" ? "Daily medication reminder" : "Message from Master");
+        ImGui.SetWindowFontScale(1f);ImGui.Separator();
+        var armed=Environment.TickCount64-appearedAt>=500;
+        editingPrompt=false;
+        if(ImGui.BeginChild("Prompt contents",new Vector2(-1,-124*scale),false)) {
+            try {
+                ImGui.SetWindowFontScale(1.35f);ImGui.PushTextWrapPos(0);
+                ImGui.TextUnformatted(prompt.Kind=="reminder" ? prompt.Label : prompt.Text);
+                ImGui.PopTextWrapPos();ImGui.SetWindowFontScale(1f);ImGui.Spacing();
+                if(prompt.Kind=="message") {
+                    var options=prompt.Choices ?? [];
+                    for(var i=0;i<Math.Min(options.Count,32);i++) {
+                        ImGui.PushID(i);ImGui.BeginDisabled(!armed);
+                        // Draw the label literally, including any ImGui ## markers.
+                        var width=ImGui.GetContentRegionAvail().X;
+                        var labelSize=ImGui.CalcTextSize(options[i],false,width-16*scale);
+                        var start=ImGui.GetCursorScreenPos();
+                        var clicked=ImGui.Button("##choice",new Vector2(width,Math.Max(32*scale,labelSize.Y+12*scale)));
+                        ImGui.GetWindowDrawList().AddText(ImGui.GetFont(),ImGui.GetFontSize(),start+new Vector2(8,6)*scale,
+                            ImGui.GetColorU32(ImGuiCol.Text),options[i],width-16*scale);
+                        ImGui.EndDisabled();ImGui.PopID();
+                        if(clicked)plugin.Choose("choice",optionIndex:i);
+                    }
+                    if(prompt.AllowReply) {
+                        ImGui.TextUnformatted("Your reply");
+                        ImGui.InputTextMultiline("##PromptReply",ref reply,1000,new Vector2(-1,70*scale));
+                        editingPrompt=ImGui.IsItemActive();
+                        ImGui.BeginDisabled(!armed || string.IsNullOrWhiteSpace(reply));
+                        if(ImGui.Button("Send reply",new Vector2(-1,32*scale)))plugin.Choose("reply",reply);
+                        ImGui.EndDisabled();
+                    }
+                }
+                ImGui.Spacing();ImGui.SetNextItemWidth(125*scale);
+                ImGui.InputInt("Snooze minutes",ref snoozeMinutes,1,5);
+                editingPrompt|=ImGui.IsItemActive();
+                var valid=SnoozePolicy.IsValid(snoozeMinutes);
+                if(!valid)ImGui.TextUnformatted("Choose 1 to 1,440 minutes.");
+                ImGui.BeginDisabled(!armed || !valid);
+                if(ImGui.Button($"Snooze {snoozeMinutes} minutes",new Vector2(-1,32*scale)))plugin.Choose("snooze",minutes:snoozeMinutes);
+                ImGui.EndDisabled();
+                if(prompt.Kind=="reminder") {
+                    ImGui.BeginDisabled(!armed);
+                    if(ImGui.Button("I took them",new Vector2(-1,32*scale)))plugin.Choose("taken");
                     ImGui.EndDisabled();
                 }
-                ImGui.SetNextItemWidth(150 * scale);
-                ImGui.InputInt("Snooze minutes", ref snoozeMinutes, 1, 5);
-                editingPrompt |= ImGui.IsItemActive();
-                var validSnooze = SnoozePolicy.IsValid(snoozeMinutes);
-                if (!validSnooze) ImGui.TextUnformatted("Choose 1 to 1,440 minutes.");
-                ImGui.BeginDisabled(!armed || !validSnooze);
-                var snoozed = ImGui.Button($"Snooze {snoozeMinutes} minutes", new Vector2(-1, 40 * scale));
-                ImGui.EndDisabled();
-                ImGui.BeginDisabled(!armed);
-                var acknowledged = prompt.Kind == "reminder" && ImGui.Button("I took them", new Vector2(-1, 40 * scale));
-                ImGui.EndDisabled();
-                if (snoozed) plugin.Choose("snooze", minutes: snoozeMinutes);
-                else if (acknowledged) plugin.Choose("taken");
-                ImGui.Separator();
-                if (ImGui.Button("Kill switch — stop master input", new Vector2(-1, 32 * scale))) plugin.SetEnabled(false);
-                if (!string.IsNullOrEmpty(plugin.SaveError)) ImGui.TextWrapped(plugin.SaveError);
-            }
-            finally { ImGui.SetWindowFontScale(1f); ImGui.EndChild(); }
+            } finally {ImGui.SetWindowFontScale(1f);ImGui.EndChild();}
+        } else ImGui.EndChild();
+        ImGui.Separator();
+        if(ImGui.Button("Use game chat",new Vector2(-1,28*scale))) {
+            ImGuiP.ClearActiveID();editingPrompt=false;plugin.FocusGameChat();
         }
-        else ImGui.EndChild();
-        if (plugin.HasVisibleReminder) plugin.CaptureInput(editingPrompt, mouseOverChat);
+        ImGui.BeginDisabled(!plugin.CanCallMaster);
+        if(ImGui.Button("Call master",new Vector2(-1,28*scale)))plugin.RequestAttention();
+        ImGui.EndDisabled();
+        if(ImGui.Button("Kill switch — stop master input",new Vector2(-1,28*scale)))plugin.SetEnabled(false);
+        if(!string.IsNullOrEmpty(plugin.SaveError))ImGui.TextWrapped(plugin.SaveError);
+        if(plugin.HasVisibleReminder)plugin.CaptureInput(editingPrompt,mouseOverChat);
     }
-
-    private void DrawBackdrop(Vector2 origin, Vector2 size)
+    private static float Overlap(Vector2 position,Vector2 size,ChatArea area)
     {
-        var draw = ImGui.GetWindowDrawList();
-        var color = ImGui.ColorConvertFloat4ToU32(new Vector4(0.025f, 0.03f, 0.045f, .88f));
-        var end = origin + size;
-        if (!chatState.Available)
-        {
-            draw.AddRectFilled(origin, end, color);
-            return;
-        }
-        // Keep the chat log readable; only its input field accepts clicks.
-        var minimum = Vector2.Clamp(origin + chatState.LogArea.Minimum, origin, end);
-        var maximum = Vector2.Clamp(origin + chatState.LogArea.Maximum, minimum, end);
-        draw.AddRectFilled(origin, new Vector2(end.X, minimum.Y), color);
-        draw.AddRectFilled(new Vector2(origin.X, maximum.Y), end, color);
-        draw.AddRectFilled(new Vector2(origin.X, minimum.Y), new Vector2(minimum.X, maximum.Y), color);
-        draw.AddRectFilled(new Vector2(maximum.X, minimum.Y), new Vector2(end.X, maximum.Y), color);
-    }
-
-    private Vector2 PlacePanel(Vector2 origin, Vector2 available, ref Vector2 size)
-    {
-        var centered = origin + (available - size) / 2f;
-        if (!chatState.Available)
-            return centered;
-        var viewportOrigin = ImGui.GetMainViewport().Pos;
-        var input = new ChatArea(viewportOrigin + chatState.InputArea.Minimum,
-            viewportOrigin + chatState.InputArea.Maximum);
-        var chat = new ChatArea(viewportOrigin + chatState.LogArea.Minimum,
-            viewportOrigin + chatState.LogArea.Maximum);
-        Vector2[] candidates = [centered, origin + new Vector2(available.X - size.X, 0),
-            origin, origin + new Vector2(0, available.Y - size.Y), origin + available - size];
-        Vector2? best = null;
-        var leastOverlap = float.MaxValue;
-        foreach (var candidate in candidates)
-        {
-            if (Overlap(candidate, size, input) > 0)
-                continue;
-            var overlap = Overlap(candidate, size, chat);
-            if (overlap >= leastOverlap)
-                continue;
-            leastOverlap = overlap;
-            best = candidate;
-        }
-        if (best.HasValue)
-            return best.Value;
-
-        // A centered/custom HUD may leave no full-height position. Use the larger
-        // strip above or below the chat field; the child can scroll when needed.
-        var above = Math.Clamp(input.Minimum.Y - origin.Y, 0, available.Y);
-        var below = Math.Clamp(origin.Y + available.Y - input.Maximum.Y, 0, available.Y);
-        size.Y = MathF.Min(size.Y, MathF.Max(above, below));
-        return above >= below ? origin : new Vector2(origin.X, origin.Y + available.Y - size.Y);
-    }
-
-    private static float Overlap(Vector2 position, Vector2 size, ChatArea area)
-    {
-        var extent = Vector2.Min(position + size, area.Maximum) - Vector2.Max(position, area.Minimum);
-        return MathF.Max(0, extent.X) * MathF.Max(0, extent.Y);
-    }
-
-    public override void PostDraw()
-    {
-        if (!pushedStyle)
-            return;
-        ImGui.PopStyleVar();
-        ImGui.PopStyleColor();
-        pushedStyle = false;
+        var extent=Vector2.Min(position+size,area.Maximum)-Vector2.Max(position,area.Minimum);
+        return MathF.Max(0,extent.X)*MathF.Max(0,extent.Y);
     }
 }

@@ -78,7 +78,8 @@ internal sealed unsafe class InputGuard(IKeyState keys, IGamepadState gamepad,
         var chatAvailable = commands.Available && movement.Available && nativeChat.Read().Available;
         io.WantCaptureMouse = !chatAvailable || !mouseOverChat;
         io.WantCaptureKeyboard = editingReminder || !chatAvailable;
-        // Dalamud's Win32 backend gates keyboard messages on WantTextInput.
+        // Dalamud clears all game keys while WantTextInput is true. Only our
+        // own text field should set it when native chat access is available.
         io.WantTextInput = editingReminder || !chatAvailable;
         lastRendered = Environment.TickCount64;
         SuppressGameplay();

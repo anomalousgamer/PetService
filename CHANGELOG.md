@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.0.2 — Pet and Master pages
+
+- Add separate Pet and password-protected Master pages in game.
+- Provide the website's profile, pairing, status/location, reminder, message, pending-prompt, and recent-response controls in the Master page.
+- Keep administrator credentials in memory and clear the master session when the window closes or the portal locks.
+- Add /petservice call and Call master buttons to the Pet page and prompts, sharing the existing attention-request cooldown.
+- Use a normal-sized, fixed popup without a full-screen backdrop or close button.
+- Preserve game-chat focus and detect native text entry independently of chat geometry.
+- Add a Use game chat button to switch from popup replies to native chat.
+- Add custom reply buttons and optional written replies, managed through the portal or Discord.
+- Record and forward the selected button label to the master.
+- Remove Reported/Received timestamps and event IDs from Discord notifications.
+- Include the plugin icon inside the installer download.
+- Retain housing addresses, custom snooze durations, attention requests, and the confirmed local kill switch.
+
 ## 0.1.0.1 — Prompt and control update
 
 - Private pet/master roleplay with Discord and website administration.
@@ -13,6 +28,8 @@
 - Record **I took them** or choose a snooze duration from 1 to 1,440 minutes.
 - Character status and location, including world/data center, duty, combat,
   AFK, and game-idle state.
+- Housing addresses in observed location and Discord !where, including district,
+  ward, plot, subdivision, estate grounds, interiors, apartments, and FC rooms.
 - Cached schedules and saved choices for retry after outages.
 - Main-screen prompts with improved native chat access and guarded gameplay input.
 - Persistent local kill switch pauses prompts, normal synchronization, and status sharing.

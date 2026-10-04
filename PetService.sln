@@ -5,7 +5,7 @@ VisualStudioVersion = 18.10.12224.181 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PetService", "PetService\PetService.csproj", "{85AC3397-8C30-4C00-BEB7-75EFD2BA842A}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{FEBF81A5-D5BB-4C49-8F75-DFD1DA3D2E63}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{EBCE27F9-33B8-4C73-8D6D-B3E6A0B8BBE0}"
 	ProjectSection(SolutionItems) = preProject
 		CHANGELOG.md = CHANGELOG.md
 		README.md = README.md

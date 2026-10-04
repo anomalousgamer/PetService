@@ -17,6 +17,8 @@ public sealed class Prompt
     public string? LocalDay { get; set; }
     public string Label { get; set; } = "";
     public string Text { get; set; } = "";
+    public List<string> Choices { get; set; } = [];
+    public bool AllowReply { get; set; } = true;
     public string DueAtUtc { get; set; } = "";
     public string? DisplayedAtUtc { get; set; }
     public string? SnoozedUntilUtc { get; set; }
@@ -31,6 +33,7 @@ public sealed class Choice
     public string ClientAtUtc { get; set; } = "";
     public int? Minutes { get; set; }
     public string? Reply { get; set; }
+    public int? OptionIndex { get; set; }
 }
 public sealed class Observation
 {

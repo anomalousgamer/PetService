@@ -17,10 +17,11 @@ internal readonly record struct NativeChatState(bool Available, bool Focused, Ch
 internal sealed unsafe class NativeChat(IGameGui gameGui, IPluginLog log)
 {
     private bool failed;
+    private bool focusFailed;
 
     public void FocusInput()
     {
-        if (failed || gameGui.GameUiHidden)
+        if (focusFailed || gameGui.GameUiHidden)
             return;
         try
         {
@@ -33,27 +34,38 @@ internal sealed unsafe class NativeChat(IGameGui gameGui, IPluginLog log)
             {
                 chat->Focus();
                 chat->SetFocusNode(node);
+                chat->SetComponentFocusNode(component);
             }
         }
         catch (Exception exception)
         {
-            failed = true;
+            focusFailed = true;
             log.Error(exception, "Could not focus native chat; chat access disabled for this session.");
         }
     }
 
     public NativeChatState Read()
     {
-        if (failed || gameGui.GameUiHidden)
+        if (gameGui.GameUiHidden)
             return default;
+        bool available=false,focused=false;
+        try {
+            // Use the game's text-input state directly. Requiring an exact
+            // focused collision node rejects valid chat layouts and IME focus.
+            var module=RaptureAtkModule.Instance();
+            if(module!=null){available=true;focused=module->IsTextInputActive();}
+        } catch { }
+        var fallback=new NativeChatState(available,focused,default,default);
+        if(failed)return fallback;
         try
         {
             // Fetch pointers afresh: addons can be destroyed on logout or HUD changes.
             var chat = gameGui.GetAddonByName<AddonChatLog>("ChatLog");
             if (chat == null || !chat->IsVisible || chat->TextInput == null)
-                return default;
+                return fallback;
 
             var inputBase = (AtkComponentInputBase*)chat->TextInput;
+            available=true;
             var component = (AtkComponentBase*)chat->TextInput;
             var node = (AtkResNode*)inputBase->CollisionNode;
             if (node == null)
@@ -66,13 +78,7 @@ internal sealed unsafe class NativeChat(IGameGui gameGui, IPluginLog log)
                 if(node != null)node->GetBounds(&bounds);
             }
 
-            var stage = AtkStage.Instance();
-            var manager = stage == null ? null : stage->AtkInputManager;
-            var target = manager == null || manager->TextInput == null
-                ? null : manager->TextInput->TargetTextInputEventInterface;
-            var focused = manager != null && manager->IsTextInputActive
-                && ((node != null && manager->FocusedNode == node) || (target != null && component->OwnerNode != null
-                    && target->GetOwnerNode() == (AtkResNode*)component->OwnerNode));
+            focused |= inputBase->IsActive;
             Bounds logBounds = default;
             chat->GetWindowBounds(&logBounds);
             if((logBounds.Width<=0 || logBounds.Height<=0) && chat->RootNode!=null)
@@ -81,16 +87,17 @@ internal sealed unsafe class NativeChat(IGameGui gameGui, IPluginLog log)
             // available so the game can open it; never invent a clickable hole.
             var inputArea=bounds.Width>0 && bounds.Height>0 ? new ChatArea(
                 new Vector2(bounds.Pos1.X,bounds.Pos1.Y),new Vector2(bounds.Pos2.X,bounds.Pos2.Y)) : default;
-            return new NativeChatState(true, focused, inputArea, new ChatArea(
+            return new NativeChatState(available, focused, inputArea, new ChatArea(
                 new Vector2(logBounds.Pos1.X, logBounds.Pos1.Y),
                 new Vector2(logBounds.Pos2.X, logBounds.Pos2.Y)));
         }
         catch (Exception exception)
         {
-            // Unknown layouts must not create a hole through to gameplay.
+            // Geometry failure must not disable native text entry. Gameplay
+            // remains filtered independently; no mouse hit area is invented.
             failed = true;
-            log.Error(exception, "Native chat detection failed; chat access disabled for this session.");
-            return default;
+            log.Error(exception, "Native chat bounds unavailable; keyboard text entry remains independent.");
+            return fallback;
         }
     }
 }

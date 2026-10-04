@@ -3,8 +3,8 @@
     "Author": "Anomaly",
     "Name": "Pet Service",
     "InternalName": "PetService",
-    "AssemblyVersion": "0.1.0.1",
-    "Description": "A private FFXIV tool for consensual pet/master roleplay and power dynamics. Masters manage messages and reminders through Discord or a private portal, while pets receive interactive prompts in game. Includes replies, snoozing, shared status and location, and a local kill switch controlled by the pet.",
+    "AssemblyVersion": "0.1.0.2",
+    "Description": "A private FFXIV tool for consensual pet/master roleplay and power dynamics. Masters manage messages and reminders through Discord, the website, or the in-game Master page. Pets receive interactive prompts with replies, snoozing, shared status and location, and a local kill switch.",
     "ApplicableVersion": "any",
     "Tags": [
       "roleplay",
@@ -21,11 +21,11 @@
     "Punchline": "Consensual pet/master roleplay, messages, and shared routines.",
     "AcceptsFeedback": true,
     "RepoUrl": "https://github.com/anomalousgamer/PetService",
-    "Changelog": "- Larger master-message prompts with native chat access improvements.\n- Choose and report a custom snooze duration.\n- Confirm kill-switch activation from any plugin screen or command.\n- Queue Discord notices for kill switch and local safe mode.\n- Request the master\u2019s attention with /petservice request.\n- Pet-local daily schedules and master-local display times.\n- Ordinary FFXIV chat is never stored or forwarded.",
+    "Changelog": "- Separate Pet and password-protected Master pages with the website controls in game.\n- /petservice call and Call master buttons share the attention-request cooldown.\n- Fixed, normal-sized prompts without a full-screen backdrop or close button.\n- Improved native chat typing and a Use game chat button.\n- Custom reply buttons with optional written replies.\n- Cleaner Discord notifications without delivery timestamps or event IDs.\n- Retain housing addresses, custom snoozing, and the confirmed local kill switch.",
     "IsHide": false,
-    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.1.0.1/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.1.0.1/latest.zip",
-    "LastUpdate": 1791072857,
+    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.1.0.2/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.1.0.2/latest.zip",
+    "LastUpdate": 1791078286,
     "IconUrl": "https://raw.githubusercontent.com/anomalousgamer/PetService/main/images/icon.png"
   }
 ]
