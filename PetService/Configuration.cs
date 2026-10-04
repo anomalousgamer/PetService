@@ -17,4 +17,5 @@ public sealed class Configuration : IPluginConfiguration
     public List<Schedule> Reminders { get; set; } = [];
     public List<Prompt> Prompts { get; set; } = [];
     public List<Choice> Outbox { get; set; } = [];
+    public List<Choice> SafetyOutbox { get; set; } = [];
 }

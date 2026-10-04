@@ -3,7 +3,7 @@
     "Author": "Anomaly",
     "Name": "Pet Service",
     "InternalName": "PetService",
-    "AssemblyVersion": "0.1.0.0",
+    "AssemblyVersion": "0.1.0.1",
     "Description": "A private FFXIV tool for consensual pet/master roleplay and power dynamics. Masters manage messages and reminders through Discord or a private portal, while pets receive interactive prompts in game. Includes replies, snoozing, shared status and location, and a local kill switch controlled by the pet.",
     "ApplicableVersion": "any",
     "Tags": [
@@ -21,11 +21,11 @@
     "Punchline": "Consensual pet/master roleplay, messages, and shared routines.",
     "AcceptsFeedback": true,
     "RepoUrl": "https://github.com/anomalousgamer/PetService",
-    "Changelog": "- Private pet/master roleplay with Discord and website administration.\n- Install and update through a custom Dalamud repository.\n- Pair once with the private service and reconnect automatically on future logins.\n- Code-only pairing with the service connection built into the plugin.\n- Minimal pet window with setup, connection status, kill switch, and unpair.\n- Custom master messages with popup replies and 10-minute snooze.\n- Centrally configured daily medication reminders with time-zone support and\n  today's overdue login catch-up.\n- Record **I took them** or snooze for 10 minutes.\n- Character status and location, including world/data center, duty, combat,\n  AFK, and game-idle state.\n- Cached schedules and saved choices for retry after outages.\n- Main-screen prompts with native chat availability shown in the popup.\n- Persistent local kill switch pauses prompts, synchronization, and status sharing.\n- Cancel active synchronization and ignore late responses through pause/resume.\n- Local release command and queued reminders retained until acknowledged.\n- Ordinary FFXIV chat is never stored or forwarded.",
+    "Changelog": "- Larger master-message prompts with native chat access improvements.\n- Choose and report a custom snooze duration.\n- Confirm kill-switch activation from any plugin screen or command.\n- Queue Discord notices for kill switch and local safe mode.\n- Request the master\u2019s attention with /petservice request.\n- Pet-local daily schedules and master-local display times.\n- Ordinary FFXIV chat is never stored or forwarded.",
     "IsHide": false,
-    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.1.0.0/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.1.0.0/latest.zip",
-    "LastUpdate": 1791066388,
+    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.1.0.1/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.1.0.1/latest.zip",
+    "LastUpdate": 1791072857,
     "IconUrl": "https://raw.githubusercontent.com/anomalousgamer/PetService/main/images/icon.png"
   }
 ]

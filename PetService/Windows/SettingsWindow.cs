@@ -31,7 +31,7 @@ internal sealed class SettingsWindow : Window
             plugin.SetEnabled(!paused);
         paused = plugin.KillSwitchOn;
         ImGui.TextWrapped(paused
-            ? "ON: no reminders, master messages, or status/location sharing. Stays on until you turn it off."
+            ? "ON: master input and status/location sharing are paused. A kill-switch notice is queued for the master. Stays on until you turn it off."
             : "OFF: the service can send reminders and messages and receive your status/location.");
 
         if (!plugin.IsPaired)

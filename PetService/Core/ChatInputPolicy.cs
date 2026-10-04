@@ -8,7 +8,7 @@ internal static class ChatInputPolicy
         if (!chatAvailable || editingReminder)
             return false;
         if (!chatFocused)
-            return false; // InputGuard focuses chat itself on Enter, then consumes that key.
+            return key == 0x0D; // Let the game open chat naturally on Enter.
 
         return key is >= 0x30 and <= 0x39 or >= 0x41 and <= 0x5A // numbers and letters
             or >= 0x60 and <= 0x6F      // numpad text entry

@@ -25,7 +25,7 @@ internal sealed unsafe class NativeChat(IGameGui gameGui, IPluginLog log)
         try
         {
             var chat = gameGui.GetAddonByName<AddonChatLog>("ChatLog");
-            if (chat == null || !chat->IsVisible || chat->TextInput == null || !chat->TextInput->Enabled)
+            if (chat == null || !chat->IsVisible || chat->TextInput == null)
                 return;
             var component = (AtkComponentBase*)chat->TextInput;
             var node = component->GetFocusNode();
@@ -50,7 +50,7 @@ internal sealed unsafe class NativeChat(IGameGui gameGui, IPluginLog log)
         {
             // Fetch pointers afresh: addons can be destroyed on logout or HUD changes.
             var chat = gameGui.GetAddonByName<AddonChatLog>("ChatLog");
-            if (chat == null || !chat->IsVisible || chat->TextInput == null || !chat->TextInput->Enabled)
+            if (chat == null || !chat->IsVisible || chat->TextInput == null)
                 return default;
 
             var inputBase = (AtkComponentInputBase*)chat->TextInput;
@@ -58,25 +58,30 @@ internal sealed unsafe class NativeChat(IGameGui gameGui, IPluginLog log)
             var node = (AtkResNode*)inputBase->CollisionNode;
             if (node == null)
                 node = (AtkResNode*)component->OwnerNode;
-            if (node == null || !node->IsVisible())
-                return default;
-
             Bounds bounds = default;
-            node->GetBounds(&bounds);
+            if(node != null)node->GetBounds(&bounds);
             if (bounds.Width <= 0 || bounds.Height <= 0)
-                return default;
+            {
+                node = (AtkResNode*)component->OwnerNode;
+                if(node != null)node->GetBounds(&bounds);
+            }
 
             var stage = AtkStage.Instance();
             var manager = stage == null ? null : stage->AtkInputManager;
             var target = manager == null || manager->TextInput == null
                 ? null : manager->TextInput->TargetTextInputEventInterface;
-            var focused = manager != null && manager->IsTextInputActive && target != null
-                && target->GetOwnerNode() == (AtkResNode*)component->OwnerNode;
+            var focused = manager != null && manager->IsTextInputActive
+                && ((node != null && manager->FocusedNode == node) || (target != null && component->OwnerNode != null
+                    && target->GetOwnerNode() == (AtkResNode*)component->OwnerNode));
             Bounds logBounds = default;
             chat->GetWindowBounds(&logBounds);
-            return new NativeChatState(true, focused, new ChatArea(
-                new Vector2(bounds.Pos1.X, bounds.Pos1.Y),
-                new Vector2(bounds.Pos2.X, bounds.Pos2.Y)), new ChatArea(
+            if((logBounds.Width<=0 || logBounds.Height<=0) && chat->RootNode!=null)
+                chat->RootNode->GetBounds(&logBounds);
+            // An inactive input may not have drawable bounds yet. Keep Enter
+            // available so the game can open it; never invent a clickable hole.
+            var inputArea=bounds.Width>0 && bounds.Height>0 ? new ChatArea(
+                new Vector2(bounds.Pos1.X,bounds.Pos1.Y),new Vector2(bounds.Pos2.X,bounds.Pos2.Y)) : default;
+            return new NativeChatState(true, focused, inputArea, new ChatArea(
                 new Vector2(logBounds.Pos1.X, logBounds.Pos1.Y),
                 new Vector2(logBounds.Pos2.X, logBounds.Pos2.Y)));
         }

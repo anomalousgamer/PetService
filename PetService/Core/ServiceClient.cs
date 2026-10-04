@@ -35,7 +35,7 @@ public sealed class ServiceClient : IDisposable
         request.Content=new StringContent(JsonSerializer.Serialize(payload,Json),Encoding.UTF8,"application/json");
         if (token is not null) request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",token);
         using var response=await http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,cancel).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) throw new ServiceFailure($"Service returned HTTP {(int)response.StatusCode}.", route=="/api/sync" && response.StatusCode==HttpStatusCode.Unauthorized);
+        if (!response.IsSuccessStatusCode) throw new ServiceFailure($"Service returned HTTP {(int)response.StatusCode}.", token is not null && response.StatusCode==HttpStatusCode.Unauthorized);
         if (response.Content.Headers.ContentLength is > 1048576) throw new ServiceFailure("Service response is too large.");
         await using var stream=await response.Content.ReadAsStreamAsync(cancel).ConfigureAwait(false);
         using var buffer=new MemoryStream();
@@ -46,5 +46,6 @@ public sealed class ServiceClient : IDisposable
     }
     public Task<PairResult> Pair(string code,CancellationToken cancel) => Post<PairResult>("/api/pair",new { code },null,cancel);
     public Task<SyncResult> Sync(string token,Observation status,List<Choice> events,CancellationToken cancel) => Post<SyncResult>("/api/sync",new { status,events },token,cancel);
+    public Task<DeviceEventResult> DeviceEvents(string token,List<Choice> events,CancellationToken cancel) => Post<DeviceEventResult>("/api/device/events",new { events },token,cancel);
     public void Dispose() => http.Dispose();
 }

@@ -44,7 +44,8 @@ public static class LocalState
     public static void Apply(Prompt prompt, Choice choice)
     {
         if (choice.Action == "displayed") prompt.DisplayedAtUtc ??= choice.ClientAtUtc;
-        else if (choice.Action == "snooze" && prompt.ResolvedAtUtc is null) prompt.SnoozedUntilUtc = Stamp(Parse(choice.ClientAtUtc).AddMinutes(10));
+        else if (choice.Action == "snooze" && prompt.ResolvedAtUtc is null && SnoozePolicy.IsValid(choice.Minutes))
+            prompt.SnoozedUntilUtc = Stamp(Parse(choice.ClientAtUtc).AddMinutes(choice.Minutes!.Value));
         else if (choice.Action is "taken" or "acknowledge" or "reply")
         { prompt.ResolvedAtUtc=choice.ClientAtUtc; prompt.Resolution=choice.Action; prompt.SnoozedUntilUtc=null; }
     }

@@ -1,6 +1,6 @@
 # Pet Service
 
-Author: **Anomaly**. Version **0.1.0.0**. InternalName **PetService**. Dalamud API **15**.
+Author: **Anomaly**. Version **0.1.0.1**. InternalName **PetService**. Dalamud API **15**.
 
 Pet Service is a private FFXIV tool for consensual pet/master roleplay and power
 dynamics. The master directs messages, reminders, and interactive prompts through
@@ -28,14 +28,15 @@ The plugin requires **Dalamud API 15**.
 
 ## Features
 
-- Custom master messages shown in game with a reply box and **Snooze 10 minutes**.
-- Interactive prompts over the main game view, with native chat availability
-  shown in the popup.
+- Custom master messages shown in game with a large readable message, a reply box, and a custom snooze duration.
+- Interactive prompts over the main game view, with native FFXIV chat kept available while gameplay inputs are guarded.
 - Shared character status and location, including current world/data center,
   duty, combat, AFK, and game-idle state.
-- Daily medication reminders configured centrally with an explicit time zone.
+- Daily medication reminders managed centrally on the pet’s local clock.
 - Today's overdue reminder appears after the character logs in.
-- **I took them** and **Snooze 10 minutes** for reminders.
+- **I took them** and a pet-chosen snooze of 1 to 1,440 minutes.
+- **/petservice request** pings the configured master in Discord, limited to once a minute.
+- Discord notices for kill-switch activation and local safe mode (release).
 - Cached schedules and saved-choice retries after a service outage.
 - A minimal pet window with setup, connection status, a local kill switch, and unpair.
 
@@ -44,15 +45,19 @@ normal game chat is not a reply to the master. Choices are saved locally before
 prompt dismissal and retried after outages. **Taken** is a self-reported acknowledgment.
 
 Prompts cover the main game view. FFXIV continues running while a prompt is open.
-Native chat availability is shown in the popup. If native chat is unavailable,
-full input capture is used; the local kill switch and release command remain available.
+Native chat access depends on the supported game UI and input hooks. If those are
+unavailable after a game update, the guard uses full input capture. The local kill
+switch remains available in every prompt; the release command can also be entered
+through Dalamud’s command interface.
 
 ## Local kill switch
 
-**Kill switch ON** immediately closes the popup and releases input capture. It
-pauses master messages, daily reminders (including cached ones), synchronization,
-and status/location sharing. It cancels active synchronization and ignores late
-responses, including responses from before a pause/resume.
+Every kill-switch activation from setup, a popup, or **/petservice off** first asks
+for confirmation. Cancel leaves the current state unchanged. Confirming immediately
+closes the popup and releases input capture. It pauses master messages, daily reminders (including cached ones), normal synchronization,
+and status/location sharing. One explicit activation notice is saved locally and
+retried for delivery to Discord without uploading status or location while paused. It
+cancels active synchronization and ignores late responses, including responses from before a pause/resume.
 
 The setting stays on after logins and plugin reloads. The master cannot turn it
 off remotely. If the setting cannot be saved, the current session still pauses
@@ -65,16 +70,19 @@ message. Already-sent requests and replies cannot be recalled.
 
 The master's latest status becomes stale after contact is lost, rather than
 claiming the character logged out. **/petservice release** releases the guard
-for the current login while keeping the service connection active.
+for the current login while keeping the service connection active. This is local
+safe mode and sends a Discord notice. Disabling Pet Service through Dalamud, a
+crash, or an unload cannot guarantee a final notice; missing contact becomes stale.
 
 ## Commands
 
 | Command | Action |
 |---|---|
 | `/petservice` | Open setup, connection status, and the kill switch. |
-| `/petservice off` | Turn the kill switch ON and pause the service. |
+| `/petservice off` | Ask for confirmation, then pause with the kill switch. |
 | `/petservice on` | Turn the kill switch OFF and resume the service. |
-| `/petservice release` | Release the guard until the next login or reload. |
+| `/petservice release` | Activate local safe mode until the next login or reload; notify Discord. |
+| `/petservice request` | Queue an attention request that pings the master in Discord. |
 
 ## Data
 

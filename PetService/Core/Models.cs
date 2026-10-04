@@ -34,6 +34,7 @@ public sealed class Choice
 }
 public sealed class Observation
 {
+    public string TimeZone { get; set; } = "";
     public bool LoggedIn { get; set; }
     public bool Ready { get; set; }
     public bool InDuty { get; set; }
@@ -65,5 +66,10 @@ public sealed class SyncResult
     public string PetName { get; set; } = "";
     public List<Schedule> Reminders { get; set; } = [];
     public List<Prompt> Occurrences { get; set; } = [];
+    public List<string> AcceptedEventIds { get; set; } = [];
+}
+public sealed class DeviceEventResult
+{
+    public string PetId { get; set; } = "";
     public List<string> AcceptedEventIds { get; set; } = [];
 }

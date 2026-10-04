@@ -30,6 +30,7 @@ public sealed class Plugin : IDalamudPlugin
     internal Configuration Configuration { get; private set; }
     private readonly WindowSystem windows = new("PetService");
     private readonly SettingsWindow settings;
+    private readonly KillSwitchWindow killConfirmation;
     private readonly InputGuard input;
     private readonly NativeChat nativeChat;
     private readonly ChatCommandGuard chatCommands;
@@ -40,13 +41,15 @@ public sealed class Plugin : IDalamudPlugin
     private Task<SyncResult>? syncTask;
     private long syncRevision;
     private Task<PairResult>? pairTask;
+    private Task<DeviceEventResult>? safetyTask;
+    private long nextSafetySync, nextAttentionRequest;
     private long nextSync, nextEvaluation, nextDisplayedAttempt;
     private bool previousLogin, localRelease, disposed;
     private string sessionId = "", loginAt = "", loginSource = "";
     internal string ServiceStatus { get; private set; } = "Not connected yet.";
     internal string SaveError { get; private set; } = "";
     internal string ScheduleError { get; private set; } = "";
-    internal bool NetworkBusy => pairTask is not null || syncTask is not null;
+    internal bool NetworkBusy => pairTask is not null || syncTask is not null || safetyTask is not null;
     internal bool IsPaired => Configuration.DeviceToken.Length > 0 && !Configuration.Revoked
         && ServiceClient.MatchesBundledService(Configuration.ServiceUrl);
     internal bool KillSwitchOn => !masterInput.Enabled;
@@ -65,6 +68,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         Configuration=PluginInterface.GetPluginConfig() as Configuration ?? new();
         Configuration.Reminders ??= []; Configuration.Prompts ??= []; Configuration.Outbox ??= [];
+        Configuration.SafetyOutbox ??= [];
         masterInput=new(Configuration.Enabled);
         if(KillSwitchOn)ServiceStatus="Kill switch is on. Master input and status sharing are paused.";
         else if(Configuration.DeviceToken.Length>0 && !ServiceClient.MatchesBundledService(Configuration.ServiceUrl))
@@ -74,11 +78,12 @@ public sealed class Plugin : IDalamudPlugin
         movement=new(Interop,()=>HasVisibleReminder && input is not null && input.IsCapturing,Log);
         input=new(KeyState,Gamepad,nativeChat,chatCommands,movement,Log);
         settings=new(this); windows.AddWindow(settings); windows.AddWindow(new PromptWindow(this));
+        killConfirmation=new(this); windows.AddWindow(killConfirmation);
         var ui=PluginInterface.UiBuilder;
         ui.DisableAutomaticUiHide=true;ui.DisableUserUiHide=true;ui.DisableCutsceneUiHide=true;ui.DisableGposeUiHide=true;
         ui.Draw+=Draw;ui.OpenConfigUi+=OpenSettings;ui.OpenMainUi+=OpenSettings;
         ClientState.Login+=OnLogin; Framework.Update+=Update;
-        Commands.AddHandler("/petservice",new CommandInfo(Command) {HelpMessage="Open setup and kill switch. /petservice off: stop master input. /petservice on: resume. /petservice release: release for this login."});
+        Commands.AddHandler("/petservice",new CommandInfo(Command) {HelpMessage="Open setup. /petservice off: confirm kill switch. /petservice on: resume. /petservice release: safe mode for this login. /petservice request: request the master's attention."});
         previousLogin=ClientState.IsLoggedIn;
         if(previousLogin)StartSession("first-observed");
         if(!IsPaired)settings.IsOpen=true;
@@ -92,6 +97,7 @@ public sealed class Plugin : IDalamudPlugin
             case "off":SetEnabled(false);break;
             case "on":SetEnabled(true);break;
             case "release":ReleaseSession();break;
+            case "request":RequestAttention();break;
             default:OpenSettings();break;
         }
     }
@@ -114,37 +120,57 @@ public sealed class Plugin : IDalamudPlugin
     }
     internal void ReleaseSession()
     {
+        if(localRelease)return;
         localRelease=true;input.Release();
-        if(IsPaired && !KillSwitchOn)Mutate(c=>c.Outbox.Add(new Choice{Action="release",ClientAtUtc=LocalState.Stamp(Now)}));
+        if(IsPaired && !KillSwitchOn)Mutate(c=>c.SafetyOutbox.Add(new Choice{Action="release",ClientAtUtc=LocalState.Stamp(Now)}));
+        nextSafetySync=0;
         nextSync=0;
         if(!KillSwitchOn)ServiceStatus="Input guard released for this login. Pending reminders remain unresolved.";
     }
     internal void SetEnabled(bool enabled)
     {
         if(!enabled) {
-            // Release first, including when disk persistence fails. Cancellation
-            // alone is insufficient: CompleteNetwork also rejects old revisions.
-            masterInput.SetEnabled(false);input.Release();
-            var saved=Mutate(c=>c.Enabled=false);
-            Configuration.Enabled=false;
-            if(!saved)SaveError="The kill switch is ON for this session, but could not be saved. Fix local configuration permissions or disk space before reloading the plugin; it may resume after a reload.";
-            ServiceStatus="Kill switch is on. Master input and status sharing are paused.";
+            if(!KillSwitchOn)killConfirmation.ShowConfirmation();
             return;
         }
         if(masterInput.Enabled || !Mutate(c=>c.Enabled=true))return;
         masterInput.SetEnabled(true);localRelease=false;nextSync=0;nextEvaluation=0;
         ServiceStatus=IsPaired ? "Resuming connection… Pending prompts may return." : "Not paired. Enter the one-time pairing code supplied by your master.";
     }
+    internal void ConfirmKillSwitch()
+    {
+        if(KillSwitchOn)return;
+        // Release first, including when disk persistence fails. Cancellation
+        // alone is insufficient: CompleteNetwork also rejects old revisions.
+        masterInput.SetEnabled(false);input.Release();
+        var notice=IsPaired ? new Choice{Action="pause",ClientAtUtc=LocalState.Stamp(Now)} : null;
+        var saved=Mutate(c=>{c.Enabled=false;if(notice is not null)c.SafetyOutbox.Add(notice);});
+        Configuration.Enabled=false;
+        if(!saved && notice is not null)Configuration.SafetyOutbox.Add(notice);
+        if(!saved)SaveError="The kill switch is ON for this session, but could not be saved. Fix local configuration permissions or disk space before reloading the plugin; it may resume after a reload.";
+        nextSafetySync=0;
+        ServiceStatus="Kill switch is on. Master input and status sharing are paused.";
+    }
+    private void RequestAttention()
+    {
+        if(!IsPaired || KillSwitchOn || !Ready){Chat.Print("Pet Service: pair and resume the plugin before requesting attention.");return;}
+        if(Environment.TickCount64<nextAttentionRequest){Chat.Print("Pet Service: wait a minute between attention requests.");return;}
+        if(Mutate(c=>c.Outbox.Add(new Choice{Action="attention",ClientAtUtc=LocalState.Stamp(Now)}))) {
+            nextAttentionRequest=Environment.TickCount64+60000;nextSync=0;
+            Chat.Print("Pet Service: attention request queued for your master.");
+        }
+    }
     internal void Unpair()
     {
         if(NetworkBusy)return;
-        if(Mutate(c=>{c.ServiceUrl="";c.DeviceToken="";c.PetId="";c.PetName="";c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;c.Revoked=false;}))
+        if(Mutate(c=>{c.ServiceUrl="";c.DeviceToken="";c.PetId="";c.PetName="";c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.SafetyOutbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;c.Revoked=false;}))
         {input.Release();ServiceStatus="Unpaired. Request a new pairing code to reconnect.";}
     }
-    internal void Choose(string action,string? reply=null)
+    internal void Choose(string action,string? reply=null,int? minutes=null)
     {
         var prompt=CurrentPrompt;if(prompt is null)return;
-        var choice=new Choice{OccurrenceId=prompt.Id,Action=action,ClientAtUtc=LocalState.Stamp(Now),Minutes=action=="snooze"?10:null,Reply=reply};
+        if(action=="snooze" && !SnoozePolicy.IsValid(minutes))return;
+        var choice=new Choice{OccurrenceId=prompt.Id,Action=action,ClientAtUtc=LocalState.Stamp(Now),Minutes=action=="snooze"?minutes:null,Reply=reply};
         if(Mutate(c=>{LocalState.Apply(c.Prompts.Single(p=>p.Id==prompt.Id),choice);c.Outbox.Add(choice);})) {nextSync=0;if(!HasVisibleReminder)input.Release();}
     }
     internal void MarkDisplayed()
@@ -157,7 +183,9 @@ public sealed class Plugin : IDalamudPlugin
     private Observation Observe()
     {
         bool logged=ClientState.IsLoggedIn, ready=Ready;
-        var o=new Observation{LoggedIn=logged,Ready=ready,SessionId=logged?sessionId:"",LoginObservedAtUtc=logged?loginAt:"",LoginTimeSource=logged?loginSource:"",
+        var zone=TimeZoneInfo.Local.Id;
+        if(TimeZoneInfo.TryConvertWindowsIdToIanaId(zone,out var iana))zone=iana;
+        var o=new Observation{TimeZone=zone,LoggedIn=logged,Ready=ready,SessionId=logged?sessionId:"",LoginObservedAtUtc=logged?loginAt:"",LoginTimeSource=logged?loginSource:"",
             InputGuardActive=input.IsCapturing,LocalRelease=localRelease};
         if(!ready)return o;
         o.CharacterName=Player.CharacterName;o.HomeWorld=Player.HomeWorld.Value.Name.ToString();o.CurrentWorld=Player.CurrentWorld.Value.Name.ToString();
@@ -175,6 +203,13 @@ public sealed class Plugin : IDalamudPlugin
             if(!logged && previousLogin){localRelease=false;sessionId="";loginAt="";loginSource="";nextSync=0;input.Release();}
             previousLogin=logged;
             CompleteNetwork();
+            // Only explicit safety notices use this route. It carries no observation
+            // and remains usable while the kill switch pauses normal synchronization.
+            if(IsPaired && safetyTask is null && Configuration.SafetyOutbox.Count>0 && Environment.TickCount64>=nextSafetySync) {
+                nextSafetySync=Environment.TickCount64+15000;
+                var batch=JsonSerializer.Deserialize<List<Choice>>(JsonSerializer.Serialize(Configuration.SafetyOutbox.Take(20),ServiceClient.Json),ServiceClient.Json)!;
+                safetyTask=service.DeviceEvents(Configuration.DeviceToken,batch,cancel.Token);
+            }
             if(Ready && masterInput.Enabled && IsPaired && Environment.TickCount64>=nextEvaluation) {
                 nextEvaluation=Environment.TickCount64+1000;
                 // Compute on a copy, then persist the whole change atomically.
@@ -198,10 +233,21 @@ public sealed class Plugin : IDalamudPlugin
             try {
                 var result=task.GetAwaiter().GetResult();
                 if(!Guid.TryParse(result.PetId,out _) || result.Token.Length!=43)throw new ServiceFailure("Invalid pairing response.");
-                if(Mutate(c=>{c.ServiceUrl=ServiceClient.BaseUrl;c.DeviceToken=result.Token;c.PetId=result.PetId;c.PetName=result.PetName;c.Revoked=false;c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;}))
+                if(Mutate(c=>{c.ServiceUrl=ServiceClient.BaseUrl;c.DeviceToken=result.Token;c.PetId=result.PetId;c.PetName=result.PetName;c.Revoked=false;c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.SafetyOutbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;}))
                 {ServiceStatus=KillSwitchOn ? "Paired. Kill switch remains on; master input and status sharing are paused." : "Paired. Synchronizing…";nextSync=0;}
                 else ServiceStatus="Pairing succeeded remotely, but the credential could not be saved. Fix the save problem and request a new !pair code.";
             } catch {ServiceStatus="Pairing failed. Check the code and service availability. Request a fresh pairing code from your master if necessary.";}
+        }
+        if(safetyTask is {IsCompleted:true}) {
+            var task=safetyTask;safetyTask=null;
+            try {
+                var result=task.GetAwaiter().GetResult();
+                if(result.PetId!=Configuration.PetId)throw new ServiceFailure("Profile mismatch.");
+                Mutate(c=>c.SafetyOutbox.RemoveAll(e=>result.AcceptedEventIds.Contains(e.Id)));
+            } catch(ServiceFailure e) {
+                if(e.Revoked)Mutate(c=>{c.Revoked=true;c.SafetyOutbox.Clear();});
+                nextSafetySync=Environment.TickCount64+15000;
+            } catch {nextSafetySync=Environment.TickCount64+15000;}
         }
         if(syncTask is {IsCompleted:true}) {
             var task=syncTask;syncTask=null;

@@ -135,9 +135,6 @@ internal sealed unsafe class InputGuard(IKeyState keys, IGamepadState gamepad,
     {
         StopExistingAutorun();
         var state = commands.Available && movement.Available ? nativeChat.Read() : default;
-        if (state.Available && !state.Focused && !editingReminder
-            && keys.IsVirtualKeyValid(VirtualKey.RETURN) && keys[VirtualKey.RETURN])
-            nativeChat.FocusInput();
         validKeys ??= keys.GetValidVirtualKeys().ToArray();
         foreach (var key in validKeys)
             if (!ChatInputPolicy.PassKey((int)key, state.Available, state.Focused, editingReminder))

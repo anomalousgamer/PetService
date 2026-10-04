@@ -2,6 +2,7 @@ using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
+using PetService.Core;
 
 namespace PetService.Windows;
 
@@ -12,8 +13,9 @@ internal sealed class PromptWindow : Window
     private bool wasVisible;
     private long appearedAt;
     private string reply = "";
+    private int snoozeMinutes = SnoozePolicy.DefaultMinutes;
     private bool pushedStyle;
-    private bool editingSnooze;
+    private bool editingPrompt;
     private bool mouseOverChat;
     private bool drawFailed;
     private NativeChatState chatState;
@@ -23,7 +25,7 @@ internal sealed class PromptWindow : Window
         | ImGuiWindowFlags.NoScrollWithMouse | ImGuiWindowFlags.NoFocusOnAppearing
         | ImGuiWindowFlags.NoBackground;
 
-    public PromptWindow(Plugin plugin) : base("Medication Reminder###PetServiceShield")
+    public PromptWindow(Plugin plugin) : base("Pet Service###PetServiceShield")
     {
         this.plugin = plugin;
         IsOpen = true;
@@ -43,7 +45,7 @@ internal sealed class PromptWindow : Window
         if (plugin.HasVisibleReminder)
             return true;
         wasVisible = false;
-        editingSnooze = false;
+        editingPrompt = false;
         return false;
     }
 
@@ -53,10 +55,10 @@ internal sealed class PromptWindow : Window
         chatState = plugin.ChatState;
         mouseOverChat = chatState.Available
             && chatState.InputArea.Contains(ImGui.GetIO().MousePos - viewport.Pos);
-        if (mouseOverChat && editingSnooze)
+        if (mouseOverChat && editingPrompt)
         {
             ImGuiP.ClearActiveID();
-            editingSnooze = false;
+            editingPrompt = false;
         }
         // Only the native chat input rectangle can receive mouse input.
         Flags = ShieldFlags | (mouseOverChat || drawFailed ? ImGuiWindowFlags.NoInputs : 0);
@@ -70,8 +72,9 @@ internal sealed class PromptWindow : Window
         {
             appearedAt = Environment.TickCount64;
             reply = "";
+            snoozeMinutes = SnoozePolicy.DefaultMinutes;
             lastPromptId = occurrence?.Id;
-            editingSnooze = false;
+            editingPrompt = false;
             // Focus ImGui for controller navigation. Native chat keeps keyboard
             // input because InputGuard leaves WantTextInput off outside our field.
             ImGui.SetNextWindowFocus();
@@ -81,7 +84,7 @@ internal sealed class PromptWindow : Window
         ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0f);
         pushedStyle = true;
         if (!drawFailed)
-            plugin.CaptureInput(editingSnooze, mouseOverChat);
+            plugin.CaptureInput(editingPrompt, mouseOverChat);
     }
 
     public override void Draw()
@@ -108,7 +111,7 @@ internal sealed class PromptWindow : Window
         if (prompt is null) return;
         var scale = ImGuiHelpers.GlobalScale;
         var available = ImGui.GetContentRegionAvail();
-        var panelSize = new Vector2(MathF.Min(580f * scale, available.X), MathF.Min(600f * scale, available.Y));
+        var panelSize = new Vector2(MathF.Min(900f * scale, available.X), MathF.Min(690f * scale, available.Y));
         var panelPosition = PlacePanel(viewport.Pos + ImGui.GetCursorPos(), available, ref panelSize);
         ImGui.SetCursorPos(panelPosition - viewport.Pos);
         if (ImGui.BeginChild("PetServicePanel", panelSize, true,
@@ -117,51 +120,54 @@ internal sealed class PromptWindow : Window
             try
             {
                 plugin.MarkDisplayed();
-                ImGui.TextUnformatted(prompt.Kind == "reminder" ? "Daily medication reminder" : "Message from master");
+                ImGui.SetWindowFontScale(1.3f);
+                ImGui.TextUnformatted(prompt.Kind == "reminder" ? "Daily medication reminder" : "Message from Master");
+                ImGui.SetWindowFontScale(1f);
                 ImGui.Separator();
+                ImGui.Spacing();
+                ImGui.SetWindowFontScale(1.65f);
                 ImGui.PushTextWrapPos(0);
-                ImGui.TextUnformatted(prompt.Label);
-                if (!string.IsNullOrEmpty(prompt.Text)) ImGui.TextUnformatted(prompt.Text);
-                if (prompt.LocalDay is not null) ImGui.TextUnformatted("Scheduled day: " + prompt.LocalDay);
-                ImGui.TextUnformatted(chatState.Available ? "Chat remains available. Press Enter or click the chat input." : "Native chat detection is unavailable; full input capture is used.");
-                ImGui.TextUnformatted("FFXIV continues running while this prompt is open.");
+                ImGui.TextUnformatted(prompt.Kind == "reminder" ? prompt.Label : prompt.Text);
                 ImGui.PopTextWrapPos();
+                ImGui.SetWindowFontScale(1f);
                 ImGui.Spacing();
                 var armed = Environment.TickCount64 - appearedAt >= 500;
-                editingSnooze = false;
+                editingPrompt = false;
                 if (prompt.Kind == "message")
                 {
-                    ImGui.InputTextMultiline("Reply", ref reply, 1000, new Vector2(-1, 90 * scale));
-                    editingSnooze = ImGui.IsItemActive();
+                    ImGui.InputTextMultiline("Reply", ref reply, 1000, new Vector2(-1, 105 * scale));
+                    editingPrompt = ImGui.IsItemActive();
                     ImGui.BeginDisabled(!armed || string.IsNullOrWhiteSpace(reply));
                     if (ImGui.Button("Send reply", new Vector2(-1, 36 * scale))) plugin.Choose("reply", reply);
                     ImGui.EndDisabled();
                 }
-                ImGui.BeginDisabled(!armed);
-                var snoozed = ImGui.Button("Snooze 10 minutes", new Vector2(-1, 36 * scale));
-                ImGui.SetItemDefaultFocus();
-                var acknowledged = prompt.Kind == "reminder" && ImGui.Button("I took them", new Vector2(-1, 36 * scale));
+                ImGui.SetNextItemWidth(150 * scale);
+                ImGui.InputInt("Snooze minutes", ref snoozeMinutes, 1, 5);
+                editingPrompt |= ImGui.IsItemActive();
+                var validSnooze = SnoozePolicy.IsValid(snoozeMinutes);
+                if (!validSnooze) ImGui.TextUnformatted("Choose 1 to 1,440 minutes.");
+                ImGui.BeginDisabled(!armed || !validSnooze);
+                var snoozed = ImGui.Button($"Snooze {snoozeMinutes} minutes", new Vector2(-1, 40 * scale));
                 ImGui.EndDisabled();
-                if (snoozed) plugin.Choose("snooze");
+                ImGui.BeginDisabled(!armed);
+                var acknowledged = prompt.Kind == "reminder" && ImGui.Button("I took them", new Vector2(-1, 40 * scale));
+                ImGui.EndDisabled();
+                if (snoozed) plugin.Choose("snooze", minutes: snoozeMinutes);
                 else if (acknowledged) plugin.Choose("taken");
                 ImGui.Separator();
                 if (ImGui.Button("Kill switch — stop master input", new Vector2(-1, 32 * scale))) plugin.SetEnabled(false);
-                ImGui.TextWrapped(plugin.ServiceStatus);
                 if (!string.IsNullOrEmpty(plugin.SaveError)) ImGui.TextWrapped(plugin.SaveError);
-                if (plugin.InputCaptureUnavailable) ImGui.TextWrapped("Input capture failed; the prompt remains visible.");
-                if (plugin.MovementGuardUnavailable) ImGui.TextWrapped("Movement hook unavailable. Native chat is disabled during the prompt.");
-                if (plugin.AutorunStopFailed) ImGui.TextWrapped("Could not cancel an existing autorun.");
             }
-            finally { ImGui.EndChild(); }
+            finally { ImGui.SetWindowFontScale(1f); ImGui.EndChild(); }
         }
         else ImGui.EndChild();
-        if (plugin.HasVisibleReminder) plugin.CaptureInput(editingSnooze, mouseOverChat);
+        if (plugin.HasVisibleReminder) plugin.CaptureInput(editingPrompt, mouseOverChat);
     }
 
     private void DrawBackdrop(Vector2 origin, Vector2 size)
     {
         var draw = ImGui.GetWindowDrawList();
-        var color = ImGui.ColorConvertFloat4ToU32(new Vector4(0.025f, 0.03f, 0.045f, 1f));
+        var color = ImGui.ColorConvertFloat4ToU32(new Vector4(0.025f, 0.03f, 0.045f, .88f));
         var end = origin + size;
         if (!chatState.Available)
         {
