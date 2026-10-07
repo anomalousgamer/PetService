@@ -32,6 +32,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IGameInventory Inventory {get;private set;}=null!;
     [PluginService] internal static INotificationManager Notifications {get;private set;}=null!;
     private readonly ActivityRecorder recorder;
+    private readonly TravelRecorder travel;
     private readonly UpdateNotifications updates=new();
     private readonly ChangesWindow changes;
     private long changesEligible;
@@ -54,6 +55,13 @@ public sealed class Plugin : IDalamudPlugin
     private Task<DeviceEventResult>? safetyTask;
     private long nextSafetySync, nextAttentionRequest;
     private long nextSync, nextEvaluation, nextDisplayedAttempt;
+    private long nextActivityFlush,lastSyncStarted,syncRetryUntil;
+    private bool activityUploadRequested;
+    private Observation? submittedObservation;
+    private bool submittedActivity;
+    private bool liveReportsRequested;
+    private string? freshReportRequestId,submittedReportRequestId;
+    private readonly ObservationUploadPolicy observationUpload=new();
     private bool previousLogin, localRelease, disposed;
     private string sessionId = "", loginAt = "", loginSource = "";
     internal string ServiceStatus { get; private set; } = "Not connected yet.";
@@ -65,6 +73,8 @@ public sealed class Plugin : IDalamudPlugin
     internal bool KillSwitchOn => !masterInput.Enabled;
     internal bool CanCallMaster=>IsPaired && !KillSwitchOn && Ready && Environment.TickCount64>=nextAttentionRequest;
     internal int CallCooldownSeconds=>(int)Math.Max(0,(nextAttentionRequest-Environment.TickCount64+999)/1000);
+    internal void RequestObservationUpload()=>activityUploadRequested=true;
+    internal void RecordTravel(Dictionary<string,object?> data,Observation context)=>recorder.Travel(data,context);
     internal bool Ready => ClientState.IsLoggedIn && Player.IsLoaded && Objects.LocalPlayer is not null
         && !Condition[ConditionFlag.BetweenAreas] && !Condition[ConditionFlag.BetweenAreas51];
     internal DateTimeOffset Now => DateTimeOffset.UtcNow.AddMilliseconds(Configuration.ClockOffsetMilliseconds);
@@ -81,6 +91,7 @@ public sealed class Plugin : IDalamudPlugin
         Configuration=PluginInterface.GetPluginConfig() as Configuration ?? new();
         Configuration.Reminders ??= []; Configuration.Prompts ??= []; Configuration.Outbox ??= [];
         Configuration.SafetyOutbox ??= [];
+        Configuration.DisplayedChatIds ??=[];
         Configuration.ActivityOutbox ??=[];Configuration.Dynamic ??=new();
         masterInput=new(Configuration.Enabled);
         if(KillSwitchOn)ServiceStatus="Kill switch is on. Master input and status sharing are paused.";
@@ -89,7 +100,7 @@ public sealed class Plugin : IDalamudPlugin
         nativeChat=new(GameGui,Log);
         chatCommands=new(Interop,()=>HasVisibleReminder && input is not null && input.IsCapturing,Chat,Log);
         chatCommands.SpeechSettings=()=>IsPaired && !KillSwitchOn && Ready ? Configuration.Dynamic : null;
-        recorder=new(this);
+        recorder=new(this);travel=new(this);
         changes=new(this);windows.AddWindow(changes);
         movement=new(Interop,()=>HasVisibleReminder && input is not null && input.IsCapturing,Log);
         input=new(KeyState,Gamepad,nativeChat,chatCommands,movement,Log);
@@ -99,8 +110,8 @@ public sealed class Plugin : IDalamudPlugin
         ui.DisableAutomaticUiHide=true;ui.DisableUserUiHide=true;ui.DisableCutsceneUiHide=true;ui.DisableGposeUiHide=true;
         ui.Draw+=Draw;ui.OpenConfigUi+=OpenSettings;ui.OpenMainUi+=OpenSettings;
         ClientState.Login+=OnLogin; Framework.Update+=Update;
-        Commands.AddHandler("/petservice",new CommandInfo(Command) {HelpMessage="Open Pet/Master pages. /petservice off: confirm kill switch. /petservice on: resume. /petservice release: safe mode for this login. /petservice call or request: call the master."});
-        Commands.AddHandler("/toh",new CommandInfo(Command){HelpMessage="Open Pet Service. /toh call, request, off, on, release, changes, checkupdates."});
+        Commands.AddHandler("/petservice",new CommandInfo(Command) {HelpMessage="Open Pet/Master pages. /petservice off: confirm kill switch. /petservice on: resume. /petservice release: safe mode for this login. /petservice call: open Contact."});
+        Commands.AddHandler("/toh",new CommandInfo(Command){HelpMessage="Open Pet Service. /toh call, off, on, release, changes, checkupdates."});
         previousLogin=ClientState.IsLoggedIn;
         if(previousLogin && IsPaired && !KillSwitchOn)StartSession("first-observed");
         if(!IsPaired)settings.IsOpen=true;
@@ -108,6 +119,7 @@ public sealed class Plugin : IDalamudPlugin
     private void OnLogin() {previousLogin=true;if(IsPaired && !KillSwitchOn)StartSession("login-event");nextSync=0;nextEvaluation=0;}
     private void StartSession(string source) {sessionId=Guid.NewGuid().ToString();loginAt=LocalState.Stamp(Now);loginSource=source;localRelease=false;}
     private void OpenSettings()=>settings.IsOpen=true;
+    internal void OpenContact()=>settings.OpenContact();
     private void Command(string command,string args)
     {
         switch(args.Trim().ToLowerInvariant()) {
@@ -116,9 +128,8 @@ public sealed class Plugin : IDalamudPlugin
             case "off":SetEnabled(false);break;
             case "on":SetEnabled(true);break;
             case "release":ReleaseSession();break;
-            case "request":RequestAttention();break;
-            case "call":RequestAttention();break;
-            default:OpenSettings();break;
+            case "call":OpenContact();break;
+            default:if(args.Trim().Length==0)OpenSettings();else Chat.Print("Pet Service: unknown command. Use /toh to open the plugin or /toh call to open Contact.");break;
         }
     }
     internal bool Mutate(Action<Configuration> change)
@@ -163,7 +174,7 @@ public sealed class Plugin : IDalamudPlugin
         if(KillSwitchOn)return;
         // Release first, including when disk persistence fails. Cancellation
         // alone is insufficient: CompleteNetwork also rejects old revisions.
-        recorder.Stop("kill switch activated");
+        travel.Reset();recorder.Stop("kill switch activated");
         masterInput.SetEnabled(false);input.Release();sessionId="";loginAt="";loginSource="";
         var notice=IsPaired ? new Choice{Action="pause",ClientAtUtc=LocalState.Stamp(Now)} : null;
         var saved=Mutate(c=>{c.Enabled=false;if(notice is not null)c.SafetyOutbox.Add(notice);});
@@ -186,7 +197,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         if(NetworkBusy)return;
         recorder.Stop("device unpaired");
-        if(Mutate(c=>{c.ActivityOutbox.Clear();c.Dynamic=new();c.ServiceUrl="";c.DeviceToken="";c.PetId="";c.PetName="";c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.SafetyOutbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;c.Revoked=false;}))
+        if(Mutate(c=>{c.DisplayedChatIds.Clear();c.ActivityOutbox.Clear();c.Dynamic=new();c.ServiceUrl="";c.DeviceToken="";c.PetId="";c.PetName="";c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.SafetyOutbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;c.Revoked=false;}))
         {recorder.ClearPairingState();input.Release();ServiceStatus="Unpaired. Request a new pairing code to reconnect.";}
     }
     internal void Choose(string action,string? reply=null,int? minutes=null,int? optionIndex=null)
@@ -239,10 +250,10 @@ public sealed class Plugin : IDalamudPlugin
             if(!logged && previousLogin){localRelease=false;sessionId="";loginAt="";loginSource="";nextSync=0;input.Release();}
             previousLogin=logged;
             CompleteNetwork();
-            recorder.Update(Observe);updates.Update();
+            recorder.Update(Observe);travel.Update(Observe);updates.Update();
             if(Ready && !changesShown) {
                 if(changesEligible==0)changesEligible=Environment.TickCount64+3000;
-                if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.2.0.0")changes.IsOpen=true;}
+                if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.3.0.0")changes.IsOpen=true;}
             } else if(!Ready)changesEligible=0;
             // Only explicit safety notices use this route. It carries no observation
             // and remains usable while the kill switch pauses normal synchronization.
@@ -258,11 +269,22 @@ public sealed class Plugin : IDalamudPlugin
                 if(LocalState.Refresh(Configuration.Reminders,prompts,Now) && !Mutate(c=>c.Prompts=prompts))Configuration.Prompts=prompts;
                 ScheduleError="";
             }
-            if(masterInput.Enabled && IsPaired && !NetworkBusy && Environment.TickCount64>=nextSync) {
-                nextSync=Environment.TickCount64+5000;
+            var syncTick=Environment.TickCount64;
+            if(masterInput.Enabled && IsPaired && !NetworkBusy && syncTick>=syncRetryUntil
+                && syncTick>=lastSyncStarted+1000 && (syncTick>=nextSync || activityUploadRequested)) {
+                nextSync=syncTick+5000;lastSyncStarted=syncTick;
                 var batch=JsonSerializer.Deserialize<List<Choice>>(JsonSerializer.Serialize(Configuration.Outbox.Take(20),ServiceClient.Json),ServiceClient.Json)!;
+                var flush=activityUploadRequested || syncTick>=nextActivityFlush || Configuration.ActivityOutbox.Count>=50;
+                var activity=flush?Configuration.ActivityOutbox.Take(50).ToList():[];
+                submittedActivity=activity.Count>0;
+                if(flush){nextActivityFlush=syncTick+60000;activityUploadRequested=false;}
+                var current=Observe();
+                var reportQueueSaved=freshReportRequestId is null || recorder.FlushForReport();
+                if(freshReportRequestId is not null){activity=Configuration.ActivityOutbox.Take(50).ToList();submittedActivity=activity.Count>0;}
+                submittedObservation=observationUpload.NeedsSnapshot(current,syncTick,activity.Any(a=>a.Kind is not "interval" and not "position"),batch.Count>0,liveReportsRequested,freshReportRequestId is not null)?current:null;
+                submittedReportRequestId=freshReportRequestId is not null && reportQueueSaved && Configuration.ActivityOutbox.Count<=50 && Configuration.Outbox.Count<=20?freshReportRequestId:null;
                 syncRevision=masterInput.Revision;
-                syncTask=service.Sync(Configuration.DeviceToken,Observe(),batch,Configuration.ActivityOutbox.Take(50).ToList(),masterInput.RequestCancellation);
+                syncTask=service.Sync(Configuration.DeviceToken,submittedObservation,batch,activity,submittedReportRequestId,masterInput.RequestCancellation);
             }
             if(HasVisibleReminder)input.SuppressKeyboardOnFrameworkUpdate();else input.Release();
         } catch {input.Release();ScheduleError="Could not evaluate the current schedule or game state. Open settings to inspect the connection; emergency release remains available.";}
@@ -274,8 +296,8 @@ public sealed class Plugin : IDalamudPlugin
             try {
                 var result=task.GetAwaiter().GetResult();
                 if(!Guid.TryParse(result.PetId,out _) || result.Token.Length!=43)throw new ServiceFailure("Invalid pairing response.");
-                if(Mutate(c=>{c.ServiceUrl=ServiceClient.BaseUrl;c.DeviceToken=result.Token;c.PetId=result.PetId;c.PetName=result.PetName;c.Revoked=false;c.ActivityOutbox.Clear();c.Dynamic=new();c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.SafetyOutbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;}))
-                {recorder.ClearPairingState();if(!KillSwitchOn && ClientState.IsLoggedIn)StartSession("first-observed");ServiceStatus=KillSwitchOn ? "Paired. Kill switch remains on; master input and status sharing are paused." : "Paired. Synchronizing…";nextSync=0;}
+                if(Mutate(c=>{c.ServiceUrl=ServiceClient.BaseUrl;c.DeviceToken=result.Token;c.PetId=result.PetId;c.PetName=result.PetName;c.Revoked=false;c.DisplayedChatIds.Clear();c.ActivityOutbox.Clear();c.Dynamic=new();c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.SafetyOutbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;}))
+                {recorder.ClearPairingState();observationUpload.Reset();if(!KillSwitchOn && ClientState.IsLoggedIn)StartSession("first-observed");ServiceStatus=KillSwitchOn ? "Paired. Kill switch remains on; master input and status sharing are paused." : "Paired. Synchronizing…";nextSync=0;syncRetryUntil=0;}
                 else ServiceStatus="Pairing succeeded remotely, but the credential could not be saved. Fix the save problem and request a new !pair code.";
             } catch {ServiceStatus="Pairing failed. Check the code and service availability. Request a fresh pairing code from your master if necessary.";}
         }
@@ -302,15 +324,40 @@ public sealed class Plugin : IDalamudPlugin
                     c.Outbox.RemoveAll(e=>result.AcceptedEventIds.Contains(e.Id));
                     c.Prompts=LocalState.Merge(c.Prompts,result,c.Outbox);c.Reminders=result.Reminders;
                     c.LastSyncAtUtc=result.ServerTimeUtc;c.ClockOffsetMilliseconds=(serverTime-DateTimeOffset.UtcNow).TotalMilliseconds;
-                })){ServiceStatus="Connected.";if(Configuration.ActivityOutbox.Count>=50)nextSync=Environment.TickCount64+1000;}
+                })){
+                    if(submittedObservation is not null)observationUpload.Accepted(submittedObservation,Environment.TickCount64);
+                    submittedObservation=null;syncRetryUntil=0;ServiceStatus="Connected.";
+                    DeliverChat(result.ChatMessages);
+                    var liveStarted=!liveReportsRequested && result.LiveReportsRequested;
+                    liveReportsRequested=result.LiveReportsRequested;
+                    freshReportRequestId=result.FreshReportRequestId;
+                    if(freshReportRequestId is not null){recorder.FlushForReport();activityUploadRequested=true;nextSync=0;}
+                    else if(liveStarted)nextSync=0;
+                    if(submittedActivity && Configuration.ActivityOutbox.Count>0)activityUploadRequested=true;
+                    if(Configuration.ActivityOutbox.Count>=50)nextSync=Environment.TickCount64+1000;
+                }
             } catch(ServiceFailure e) {
                 if(!masterInput.Accepts(syncRevision))return;
+                observationUpload.Reset();
                 if(e.Revoked){Mutate(c=>c.Revoked=true);input.Release();ServiceStatus="Device authorization was revoked. Request a new pairing code.";}
-                else {ServiceStatus="Service unavailable. Cached reminders and saved choices remain local.";nextSync=Environment.TickCount64+15000;}
+                else {ServiceStatus="Service unavailable. Cached reminders and saved choices remain local.";syncRetryUntil=nextSync=Environment.TickCount64+15000;activityUploadRequested=true;}
             } catch {
                 if(!masterInput.Accepts(syncRevision))return;
-                ServiceStatus="Could not synchronize. Cached reminders and saved choices remain local.";nextSync=Environment.TickCount64+15000;
+                observationUpload.Reset();
+                ServiceStatus="Could not synchronize. Cached reminders and saved choices remain local.";syncRetryUntil=nextSync=Environment.TickCount64+15000;activityUploadRequested=true;
             }
+        }
+    }
+    private void DeliverChat(List<MasterChatMessage> messages)
+    {
+        if(KillSwitchOn || !IsPaired || !Ready)return;
+        foreach(var message in messages) {
+            if(!Guid.TryParse(message.Id,out _) || message.Text.Length is 0 or >1000 || message.Text.Any(c=>char.IsControl(c) && c is not '\n' and not '\t'))continue;
+            if(message.ExpiresAtUtc is not null && LocalState.Parse(message.ExpiresAtUtc)<=Now)continue;
+            if(Configuration.DisplayedChatIds.Contains(message.Id) || Configuration.Outbox.Any(e=>e.Action=="chat-displayed" && e.OccurrenceId=="c:"+message.Id))continue;
+            try {MasterChatDelivery.Print(Configuration,message.Text);}catch {continue;}
+            if(!Mutate(c=>{c.DisplayedChatIds.Add(message.Id);if(c.DisplayedChatIds.Count>500)c.DisplayedChatIds.RemoveAt(0);c.Outbox.Add(new(){Action="chat-displayed",OccurrenceId="c:"+message.Id,ClientAtUtc=LocalState.Stamp(Now)});}))break;
+            nextSync=0;
         }
     }
     private void Draw()
@@ -320,7 +367,7 @@ public sealed class Plugin : IDalamudPlugin
     internal void ReleaseInput()=>input.Release();
     public void Dispose()
     {
-        recorder.Dispose();disposed=true;cancel.Cancel();masterInput.Dispose();input.Release();
+        travel.Dispose();recorder.Dispose();disposed=true;cancel.Cancel();masterInput.Dispose();input.Release();
         PluginInterface.UiBuilder.Draw-=Draw;PluginInterface.UiBuilder.OpenConfigUi-=OpenSettings;PluginInterface.UiBuilder.OpenMainUi-=OpenSettings;
         ClientState.Login-=OnLogin;Framework.Update-=Update;Commands.RemoveHandler("/petservice");Commands.RemoveHandler("/toh");
         settings.Dispose();windows.RemoveAllWindows();chatCommands.Dispose();movement.Dispose();service.Dispose();cancel.Dispose();

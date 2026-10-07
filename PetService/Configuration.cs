@@ -21,4 +21,8 @@ public sealed class Configuration : IPluginConfiguration
     public DynamicSettings Dynamic { get; set; }=new();
     public List<ActivityRecord> ActivityOutbox { get; set; }=[];
     public List<Choice> SafetyOutbox { get; set; } = [];
+    public string MasterChatType {get;set;}="echo";
+    public ushort MasterChatColour {get;set;}=0;
+    public bool MasterChatSound {get;set;}
+    public List<string> DisplayedChatIds {get;set;}=[];
 }

@@ -15,8 +15,9 @@ internal sealed unsafe class ActivityRecorder : IDisposable
     private readonly List<ActivityRecord> pending=[];
     private readonly HashSet<uint> baselined=[];
     private Observation? previous;
+    private bool eventPending;
     private DateTimeOffset? intervalStart;
-    private long nextPoll,nextPosition,nextSave,baselineAfter;
+    private long nextPoll,nextSave,baselineAfter;
     private string runId="",dutyOutcome="unconfirmed",tradeState="",retainerState="";
     private uint dutyId;
     internal string Error {get;private set;}="";
@@ -33,13 +34,14 @@ internal sealed unsafe class ActivityRecorder : IDisposable
         var o=context??previous;if(!Active || o is null || o.SessionId.Length==0)return;
         pending.Add(new(){Kind=kind,AtUtc=LocalState.Stamp(time??DateTimeOffset.UtcNow),SessionId=o.SessionId,CharacterName=o.CharacterName,HomeWorld=o.HomeWorld,
             Data=data.Where(p=>p.Value is not null).ToDictionary(p=>p.Key,p=>p.Value)});
+        if(kind is not "interval" and not "position")eventPending=true;
     }
     private static Dictionary<string,object?> Snapshot(Observation o)=>new(){["zone"]=o.Zone,["world"]=o.CurrentWorld,["dataCenter"]=o.DataCenter,["territoryId"]=o.TerritoryId,["mapId"]=o.MapId,["x"]=o.X,["y"]=o.Y,["job"]=o.Job,["level"]=o.Level,["ready"]=o.Ready,["inDuty"]=o.InDuty,["inCombat"]=o.InCombat,["isAfk"]=o.IsAfk,["gameIdle"]=o.GameIdle,["crafting"]=o.Crafting,["gathering"]=o.Gathering,["mounted"]=o.Mounted,["cutscene"]=o.Cutscene,["unconscious"]=o.Unconscious};
     private void FlushInterval(DateTimeOffset stamp)
     {
         if(intervalStart is { } start && previous is {LoggedIn:true}) {
             var seconds=(stamp-start).TotalSeconds;
-            if(seconds>0 && seconds<=30){var data=Snapshot(previous);data["fromUtc"]=LocalState.Stamp(start);data["seconds"]=Math.Round(seconds,3);Add("interval",data,previous,stamp);}
+            if(seconds>0 && seconds<=30){var data=Snapshot(previous);data.Remove("x");data.Remove("y");data["fromUtc"]=LocalState.Stamp(start);data["seconds"]=Math.Round(seconds,3);Add("interval",data,previous,stamp);}
             else if(seconds>30 || seconds<0)Add("gap",new(){["reason"]="Framework or clock interruption; duration unknown"},previous,stamp);
         }
         intervalStart=stamp;
@@ -61,11 +63,10 @@ internal sealed unsafe class ActivityRecorder : IDisposable
         }
         if(previous?.LoggedIn==true && (intervalStart is null || (stamp-intervalStart.Value).TotalSeconds>=15
             || previous.TerritoryId!=o.TerritoryId || previous.CurrentWorld!=o.CurrentWorld || previous.Job!=o.Job || previous.Ready!=o.Ready))FlushInterval(stamp);
+        if(previous is null || StateKey(previous)!=StateKey(o))Add("state",Snapshot(o),o,stamp);
         if(o.Ready) {
-            if(previous?.Ready!=true || previous.Zone!=o.Zone || previous.CurrentWorld!=o.CurrentWorld || previous.MapId!=o.MapId){Add("zone",Snapshot(o),o,stamp);nextPosition=0;}
+            if(previous?.Ready!=true || previous.Zone!=o.Zone || previous.CurrentWorld!=o.CurrentWorld || previous.DataCenter!=o.DataCenter || previous.TerritoryId!=o.TerritoryId || previous.MapId!=o.MapId)Add("zone",Snapshot(o),o,stamp);
             if(previous?.Job!=o.Job || previous.Level!=o.Level)Add("job",Snapshot(o),o,stamp);
-            if(previous is null || StateKey(previous)!=StateKey(o))Add("state",Snapshot(o),o,stamp);
-            if(tick>=nextPosition){nextPosition=tick+30000;if(o.X is not null && o.Y is not null)Add("position",Snapshot(o),o,stamp);}
             previous=o;
             var currentDuty=o.InDuty?Plugin.Duty.ContentFinderCondition.RowId:0;
             if(currentDuty!=dutyId) {
@@ -77,10 +78,11 @@ internal sealed unsafe class ActivityRecorder : IDisposable
             ObserveNative();
         }
         previous=o;
-        if(tick>=nextSave){nextSave=tick+15000;Save();}
+        if(eventPending || tick>=nextSave){nextSave=tick+15000;Save();}
+        if(eventPending && pending.Count==0){eventPending=false;plugin.RequestObservationUpload();}
         if(plugin.Configuration.ActivityOutbox.Count+pending.Count>=50000)Error="Local activity queue is full. Recording pauses until the service accepts saved observations.";
     }
-    private static string StateKey(Observation o)=>$"{o.InDuty}:{o.InCombat}:{o.IsAfk}:{o.GameIdle}:{o.Crafting}:{o.Gathering}:{o.Mounted}:{o.Cutscene}:{o.Unconscious}";
+    private static string StateKey(Observation o)=>$"{o.Ready}:{o.InDuty}:{o.InCombat}:{o.IsAfk}:{o.GameIdle}:{o.Crafting}:{o.Gathering}:{o.Mounted}:{o.Cutscene}:{o.Unconscious}";
     private void DutyRecord(string phase,string outcome)
     {
         if(runId.Length==0 || dutyId==0)return;
@@ -157,8 +159,10 @@ internal sealed unsafe class ActivityRecorder : IDisposable
     internal void ClearPairingState()
     {
         pending.Clear();previous=null;intervalStart=null;baselined.Clear();runId="";dutyId=0;
-        tradeState="";retainerState="";Error="";nextPoll=0;nextPosition=0;
+        tradeState="";retainerState="";Error="";nextPoll=0;eventPending=false;
     }
+    internal bool FlushForReport(){Save();return pending.Count==0;}
+    internal void Travel(Dictionary<string,object?> data,Observation context){Add("travel",data,context);Save();if(pending.Count==0)plugin.RequestObservationUpload();}
     private void Save()
     {
         if(pending.Count==0)return;

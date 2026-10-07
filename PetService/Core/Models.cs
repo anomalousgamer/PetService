@@ -75,6 +75,9 @@ public sealed class PairResult
 }
 public sealed class SyncResult
 {
+    public List<MasterChatMessage> ChatMessages {get;set;}=[];
+    public bool LiveReportsRequested { get; set; }
+    public string? FreshReportRequestId { get; set; }
     public string ServerTimeUtc { get; set; } = "";
     public string PetId { get; set; } = "";
     public string PetName { get; set; } = "";
@@ -83,6 +86,16 @@ public sealed class SyncResult
     public List<string> AcceptedActivityIds { get; set; }=[];
     public DynamicSettings Settings { get; set; }=new();
     public List<string> AcceptedEventIds { get; set; } = [];
+}
+public sealed class MasterChatMessage
+{
+    public string Id {get;set;}="";
+    public string Text {get;set;}="";
+    public string CreatedAtUtc {get;set;}="";
+    public string? ExpiresAtUtc {get;set;}
+    public string? DisplayedAtUtc {get;set;}
+    public string? ResolvedAtUtc {get;set;}
+    public string State {get;set;}="queued";
 }
 public sealed class DeviceEventResult
 {

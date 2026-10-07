@@ -12,14 +12,20 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     internal List<ActivityRecord> History {get;private set;}=[];
     internal string HistoryCursor {get;private set;}="";
     internal string HistoryKind {get;private set;}="";
-    internal void LoadHistory(string kind,string from,string to,string search,bool append=false) {
+    internal void LoadHistory(string kind,string from,string to,string search,bool append=false,string method="") {
         if(!Unlocked || Busy)return;
         appendHistory=append;HistoryKind=kind;
-        historyTask=client.History(password,Selected,kind,from,to,search,append?HistoryCursor:"",cancel.Token);
+        historyTask=client.History(password,Selected,kind,from,to,search,append?HistoryCursor:"",cancel.Token,method);
     }
     private Task<AdminActionResult>? actionTask;
     private AdminAction? activeAction,retryAction;
-    private long nextRefresh;
+    private readonly string viewerId=Guid.NewGuid().ToString();
+    private Task<LiveReport>? liveTask;
+    private string liveTaskPet="",leasedPet="";
+    private bool liveTaskWatched;
+    private string? requestedReportAt;
+    private bool refreshAfterReport;
+    private long nextLive;
     private double clockOffset;
     internal AdminDashboard? Dashboard { get; private set; }
     internal string Selected { get; private set; }="";
@@ -40,12 +46,12 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     internal void Refresh()
     {
         if(Busy || password.Length==0)return;
-        dashboardTask=client.Dashboard(password,Selected,cancel.Token);nextRefresh=Environment.TickCount64+15000;
+        dashboardTask=client.Dashboard(password,Selected,cancel.Token);
     }
     internal void Select(string pet)
     {
         if(Busy || !Unlocked || !MasterPortalPolicy.ValidName(pet))return;
-        History=[];HistoryCursor="";HistoryKind="";Selected=pet;Refresh();
+        Hide();requestedReportAt=null;History=[];HistoryCursor="";HistoryKind="";Selected=pet;Refresh();
     }
     private static string Fingerprint(AdminAction action)=>JsonSerializer.Serialize(action with{RequestId=""},ServiceClient.Json);
     internal void Action(AdminAction value)
@@ -59,6 +65,20 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     internal void Retry(){if(CanRetry)Action(retryAction!);}
     internal void Update()
     {
+        if(liveTask is {IsCompleted:true}) {
+            var task=liveTask;liveTask=null;
+            try {
+                var result=task.GetAwaiter().GetResult();
+                if(liveTaskWatched && leasedPet!=liveTaskPet && password.Length>0)ObserveFailure(client.Live(password,liveTaskPet,viewerId,"stop",CancellationToken.None));
+                if(Dashboard?.Selected is { } pet && liveTaskPet==Selected && pet.Name==Selected) {
+                    pet.Status=result.Status;pet.Report=result.Report;
+                    if(result.ChatMessages is not null)pet.ChatMessages=result.ChatMessages;
+                    var profile=Dashboard.Profiles.FirstOrDefault(p=>p.Name==Selected);if(profile is not null)profile.Status=result.Status;
+                    if(DateTimeOffset.TryParse(result.ServerTimeUtc,out var stamp))clockOffset=(stamp-DateTimeOffset.UtcNow).TotalMilliseconds;
+                    CheckReport();
+                }
+            } catch(Exception e){Failure(e);nextLive=Environment.TickCount64+15000;}
+        }
         if(historyTask is {IsCompleted:true}) {
             var task=historyTask;historyTask=null;
             try {var result=task.GetAwaiter().GetResult();History=appendHistory?[..History,..result.Records]:result.Records;HistoryCursor=result.NextCursor??"";Error="";}
@@ -76,35 +96,63 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
             var task=actionTask;actionTask=null;
             try {
                 CompletedResult=task.GetAwaiter().GetResult();CompletedAction=activeAction;retryAction=null;
-                Notice=activeAction?.Action switch{"sendMessage"=>"Message queued.","createPet"=>"Pet profile created.","pair"=>"Pairing code generated.","revoke"=>"Device revoked.","addReminder"=>"Daily reminder added.","disableReminder"=>"Reminder disabled.","cancelPrompt"=>"Pending prompt cancelled.",_=>"Saved."};
+                Notice=activeAction?.Action switch{"sendChat"=>"Master chat message queued.","cancelChat"=>"Chat cancellation saved.","requestReport"=>"Fresh report requested. Waiting for the pet's plugin…","sendMessage"=>"Message queued.","createPet"=>"Pet profile created.","pair"=>"Pairing code generated.","revoke"=>"Device revoked.","addReminder"=>"Daily reminder added.","disableReminder"=>"Reminder disabled.","cancelPrompt"=>"Pending prompt cancelled.",_=>"Saved."};
+                if(activeAction?.Action=="requestReport"){requestedReportAt=CompletedResult.RequestedAtUtc;nextLive=0;}
                 if(activeAction?.Action=="createPet")Selected=CompletedResult.Pet;
                 if(activeAction?.Action=="deletePet")Selected="";
                 Refresh();
             } catch(Exception exception){Failure(exception);}
             activeAction=null;
         }
-        if(Unlocked && AutoRefresh && !Busy && Environment.TickCount64>=nextRefresh)Refresh();
+        CheckReport();
+        if(refreshAfterReport && !Busy){refreshAfterReport=false;Refresh();}
+    }
+    private void CheckReport()
+    {
+        if(requestedReportAt is null)return;
+        if(DateTimeOffset.TryParse(requestedReportAt,out var requested) && DateTimeOffset.TryParse(Dashboard?.Selected?.Report?.CompletedAtUtc,out var completed) && completed>=requested) {
+            requestedReportAt=null;refreshAfterReport=true;Notice="Fresh report received; queued observations uploaded.";
+        } else if(DateTimeOffset.TryParse(requestedReportAt,out requested) && (Now-requested).TotalSeconds>=45) {
+            requestedReportAt=null;Notice="Report request remains queued. The pet's plugin may be offline or paused.";
+        }
+    }
+    internal void TickVisible(bool overview,bool chats=false)
+    {
+        var live=overview && AutoRefresh;
+        if(!live)Hide();
+        if(!Unlocked || Selected.Length==0 || liveTask is not null || Busy || (!live && !chats && requestedReportAt is null) || Environment.TickCount64<nextLive)return;
+        liveTaskPet=Selected;liveTaskWatched=live;nextLive=Environment.TickCount64+5000;
+        if(live)leasedPet=Selected;
+        liveTask=client.Live(password,Selected,viewerId,live?"watch":chats?"chats":"read",cancel.Token);
+    }
+    internal void Hide()
+    {
+        if(leasedPet.Length==0)return;
+        var pet=leasedPet;leasedPet="";
+        if(password.Length>0)ObserveFailure(client.Live(password,pet,viewerId,"stop",CancellationToken.None));
     }
     internal void ClearCompletion(){CompletedAction=null;CompletedResult=null;}
     private void Failure(Exception exception)
     {
         if(exception is AdminFailure{Unauthorized:true}){Lock();Error="Administrator password was not accepted. Unlock again.";return;}
         Error=exception.Message switch {
-            "PET_NAME_EXISTS"=>"A pet with that name already exists.","INVALID_PET_NAME"=>"Use a lowercase name with letters, numbers, hyphens or underscores.",
+            "CHAT_QUEUE_FULL"=>"This pet already has 100 queued chat messages.","INVALID_CHAT_EXPIRY"=>"Choose 0–10,080 minutes for message expiration.","PET_NOT_PAIRED"=>"Pair this pet before requesting a fresh report.","PET_NAME_EXISTS"=>"A pet with that name already exists.","INVALID_PET_NAME"=>"Use a lowercase name with letters, numbers, hyphens or underscores.",
             "PET_NOT_FOUND"=>"This pet could not be found. Lock and reopen the portal.","PET_TIME_ZONE_UNKNOWN"=>"Connect this pet's plugin once before adding a daily reminder.",
             "INVALID_REPLY_CHOICES"=>"Check the button labels: up to 32 different labels, 80 characters each.","INVALID_REPLY_OPTIONS"=>"Add a reply button or allow a written reply.",
             "REMINDER_LIMIT"=>"This pet already has 32 enabled reminders.","MESSAGE_QUEUE_FULL"=>"This pet already has 50 pending messages.","REQUEST_ID_CONFLICT"=>"The action identifier was already used with different details. Refresh and try again.",
             _=>"Could not complete the request. Refresh or retry; the service may be temporarily unavailable."
         };
-        nextRefresh=Environment.TickCount64+15000;
+        
     }
     internal void Lock()
     {
+        Hide();requestedReportAt=null;refreshAfterReport=false;
         cancel.Cancel();cancel.Dispose();cancel=new();
         ObserveFailure(historyTask);historyTask=null;History=[];HistoryCursor="";HistoryKind="";
         ObserveFailure(dashboardTask);ObserveFailure(actionTask);dashboardTask=null;actionTask=null;
+        ObserveFailure(liveTask);liveTask=null;
         password="";Dashboard=null;Selected="";activeAction=null;retryAction=null;CompletedAction=null;CompletedResult=null;
-        Error="";Notice="";clockOffset=0;nextRefresh=0;
+        Error="";Notice="";clockOffset=0;
     }
     private static void ObserveFailure(Task? task)
     {

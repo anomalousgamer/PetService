@@ -7,13 +7,20 @@ internal static class Style
     internal static readonly Vector4 Accent=new(.76f,.63f,.98f,1),Muted=new(.65f,.67f,.77f,1),Good=new(.48f,.86f,.69f,1);
     internal static void Push()
     {
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding,new Vector2(22,20));ImGui.PushStyleVar(ImGuiStyleVar.FramePadding,new Vector2(12,9));
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding,8);ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding,12);ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing,new Vector2(12,10));
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding,new Vector2(22,20));
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemInnerSpacing,new Vector2(12*Dalamud.Interface.Utility.ImGuiHelpers.GlobalScale,ImGui.GetStyle().ItemInnerSpacing.Y));
         ImGui.PushStyleColor(ImGuiCol.WindowBg,new Vector4(.067f,.075f,.11f,1));ImGui.PushStyleColor(ImGuiCol.ChildBg,new Vector4(.11f,.12f,.17f,1));
         ImGui.PushStyleColor(ImGuiCol.Button,new Vector4(.23f,.19f,.34f,1));ImGui.PushStyleColor(ImGuiCol.ButtonHovered,new Vector4(.35f,.28f,.48f,1));
         ImGui.PushStyleColor(ImGuiCol.Header,new Vector4(.27f,.22f,.39f,1));ImGui.PushStyleColor(ImGuiCol.FrameBg,new Vector4(.085f,.10f,.15f,1));
     }
-    internal static void Pop(){ImGui.PopStyleColor(6);ImGui.PopStyleVar(5);}
+    internal static void Pop(){ImGui.PopStyleColor(6);ImGui.PopStyleVar(2);}
+    internal static void PushContent()
+    {
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding,new Vector2(12,9));
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding,8);ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding,12);
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing,new Vector2(12,10));
+    }
+    internal static void PopContent()=>ImGui.PopStyleVar(4);
     internal static void Title(string text,string sub)
     {
         ImGui.TextColored(Accent,text);ImGui.TextColored(Muted,sub);ImGui.Spacing();

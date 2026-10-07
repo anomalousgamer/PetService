@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0.0 — Across the threshold
+
+- A familiar call opens a door before a whisper leaves.
+- A voice may find a quieter place to settle.
+- Returning to the same doorstep still leaves a ribbon behind.
+- Some words wait patiently; others belong to a passing moment.
+
+## 0.2.0.1 — A quieter signal
+
+- A little more room at the threshold.
+- The signal waits where whispers gather.
+- Footsteps arrive together; moments still find their way home.
+- A watchful glance wakes the room; the trail rests between changes.
+
+
 ## 0.2.0.0 — A little closer
 
 - A familiar door opens into a warmer room.
@@ -8,7 +23,7 @@
 - Some voices may find themselves wrapped in velvet.
 - An old companion answers to a shorter name: /toh.
 
-Sharing details and supported observations are described in README and Pet Setup.
+Sharing details and supported observations are described in README.
 
 ## 0.1.0.2 — Pet and Master pages
 

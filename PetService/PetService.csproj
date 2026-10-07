@@ -1,7 +1,7 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.2.0.0</Version>
-    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <Version>0.3.0.0</Version>
+    <AssemblyVersion>0.3.0.0</AssemblyVersion>
     <Author>Anomaly</Author>
     <RepoUrl>https://github.com/anomalousgamer/PetService</RepoUrl>
     <IconUrl>https://raw.githubusercontent.com/anomalousgamer/PetService/main/images/icon.png</IconUrl>
@@ -9,7 +9,7 @@
     <Punchline>Consensual pet/master roleplay, messages, and shared routines.</Punchline>
     <Description>A private FFXIV tool for consensual pet/master roleplay and power dynamics. Masters manage prompts, routines, contact requests, locally garbled speech, and observed activity through Discord, the website, or the in-game Master page. Pets keep a local kill switch; ordinary game chat and conversation partners stay private.</Description>
     <Tags>roleplay;pet;master;private;reminder</Tags>
-    <Changelog>A familiar door opens into a warmer room. Eight whispers know the way home. Footsteps leave a trail; private words leave none. Some voices find velvet. /toh answers the call.</Changelog>
+    <Changelog>A familiar call opens a door before a whisper leaves. A voice may find a quieter place to settle. Returning to the same doorstep still leaves a ribbon behind.</Changelog>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks><Platforms>x64</Platforms><PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
@@ -19,10 +19,5 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Include="repo.json" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="CHANGELOG.md" />
-    <None Include="README.md" />
   </ItemGroup>
 </Project>

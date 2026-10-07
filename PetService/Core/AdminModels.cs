@@ -19,6 +19,9 @@ internal class AdminProfile
 }
 internal sealed class AdminPet : AdminProfile
 {
+    public List<MasterChatMessage> ChatMessages {get;set;}=[];
+    public TravelStats TravelStats {get;set;}=new();
+    public ReportState? Report { get; set; }
     public List<AdminReminder> Reminders { get; set; }=[];
     public List<Prompt> Pending { get; set; }=[];
     public List<ActivityRecord> Timeline {get;set;}=[];
@@ -39,6 +42,7 @@ internal sealed class AdminReminder
 internal sealed class AdminObservation
 {
     public string? LastSeenAtUtc { get; set; }
+    public string? SnapshotAtUtc { get; set; }
     public Observation? Reported { get; set; }
 }
 internal sealed class AdminService
@@ -69,6 +73,8 @@ internal sealed record AdminAction
     public string? ReminderId { get; init; }
     public string? PromptId { get; init; }
     public string? Text { get; init; }
+    public int? ExpiresMinutes {get;init;}
+    public string? MessageId {get;init;}
     public List<string>? Choices { get; init; }
     public bool? AllowReply { get; init; }
 }
@@ -78,6 +84,31 @@ internal sealed class AdminActionResult
     public string Pet { get; set; }="";
     public string? Code { get; set; }
     public string? ExpiresAtUtc { get; set; }
+    public string? RequestedAtUtc { get; set; }
+}
+internal sealed class ReportState
+{
+    public string RequestId {get;set;}="";
+    public string RequestedAtUtc {get;set;}="";
+    public string? CompletedAtUtc {get;set;}
+}
+internal sealed class LiveReport
+{
+    public List<MasterChatMessage>? ChatMessages {get;set;}
+    public string ServerTimeUtc {get;set;}="";
+    public AdminObservation Status {get;set;}=new();
+    public ReportState? Report {get;set;}
 }
 
 internal sealed class HistoryPage {public List<ActivityRecord> Records {get;set;}=[];public string? NextCursor {get;set;}}
+internal sealed class TravelStats
+{
+    public int Today {get;set;}
+    public int Week {get;set;}
+    public int Month {get;set;}
+    public int Total {get;set;}
+    public List<TravelGroup> Methods {get;set;}=[];
+    public List<TravelGroup> Destinations {get;set;}=[];
+    public List<TravelGroup> Characters {get;set;}=[];
+}
+internal sealed class TravelGroup {public string Label {get;set;}="";public int Trips {get;set;}}

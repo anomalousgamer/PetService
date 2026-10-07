@@ -138,9 +138,7 @@ internal sealed class PromptWindow : Window
         if(ImGui.Button("Use game chat",new Vector2(-1,28*scale))) {
             ImGuiP.ClearActiveID();editingPrompt=false;plugin.FocusGameChat();
         }
-        ImGui.BeginDisabled(!plugin.CanCallMaster);
-        if(ImGui.Button("Call master",new Vector2(-1,28*scale)))plugin.RequestAttention();
-        ImGui.EndDisabled();
+        if(ImGui.Button("Contact master",new Vector2(-1,28*scale)))plugin.OpenContact();
         if(ImGui.Button("Kill switch — stop master input",new Vector2(-1,28*scale)))plugin.SetEnabled(false);
         if(!string.IsNullOrEmpty(plugin.SaveError))ImGui.TextWrapped(plugin.SaveError);
         if(plugin.HasVisibleReminder)plugin.CaptureInput(editingPrompt,mouseOverChat);
