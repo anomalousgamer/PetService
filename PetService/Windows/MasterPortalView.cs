@@ -12,6 +12,10 @@ internal sealed class MasterPortalView : IDisposable
     private string password="",newPet="",filter="",reminderLabel="",reminderTime="18:00";
     private string pairingCode="",pairingPet="",pairingExpiry="",confirmationText="";
     private bool hadAccess,confirmRequested;
+    private string historyFrom="",historyTo="",historyPageKind="",statFrom="",statTo="";
+    private string timelineFilter="",deleteName="",contactDraft="",templateName="";
+    private string settingsPet="";
+    private DynamicSettings editSettings=new();
     private AdminAction? confirmation;
     private sealed class Draft {internal string Text="",Choices="";internal bool AllowReply=true;}
     private readonly Dictionary<string,Draft> drafts=[];
@@ -73,7 +77,20 @@ internal sealed class MasterPortalView : IDisposable
                 ImGui.SameLine();if(ImGui.Button("Clear code"))pairingCode="";
                 ImGui.TextUnformatted("Expires "+LocalDate(pairingExpiry)+" · single use");
             }
-            DrawStatus(detail);DrawMessage(detail);DrawReminders(detail);DrawPending(detail);DrawActivity(detail);
+            if(ImGui.BeginTabBar("masterdetail")) {
+                if(ImGui.BeginTabItem("Overview")){DrawOverview(detail);DrawStatus(detail);DrawAttention(detail);ImGui.EndTabItem();}
+                if(ImGui.BeginTabItem("Activity")){DrawTimeline(detail,"");DrawActivity(detail);ImGui.EndTabItem();}
+                if(ImGui.BeginTabItem("Playtime")){DrawPlaytime(detail);ImGui.EndTabItem();}
+                if(ImGui.BeginTabItem("Duties")){DrawTimeline(detail,"duty");ImGui.EndTabItem();}
+                if(ImGui.BeginTabItem("Loot & inventory")){ImGui.TextWrapped("Inventory changes are observed after container baseline. Source is unconfirmed unless independently identified.");DrawTimeline(detail,"inventory");ImGui.EndTabItem();}
+                if(ImGui.BeginTabItem("Trades")){ImGui.TextWrapped("Offers are observations; closing a window is not evidence of completion. Partners remain private.");DrawTimeline(detail,"trade");ImGui.EndTabItem();}
+                if(ImGui.BeginTabItem("Retainers")){DrawTimeline(detail,"retainer");ImGui.EndTabItem();}
+                if(ImGui.BeginTabItem("Reminders")){DrawReminders(detail);ImGui.EndTabItem();}
+                if(ImGui.BeginTabItem("Messages")){DrawMessage(detail);DrawPending(detail);ImGui.EndTabItem();}
+                if(ImGui.BeginTabItem("Dynamic")){DrawDynamic(detail);ImGui.EndTabItem();}
+                if(ImGui.BeginTabItem("Profile")){DrawProfile(detail);ImGui.EndTabItem();}
+                ImGui.EndTabBar();
+            }
         }
         ImGui.EndDisabled();
         DrawConfirmation();
@@ -95,6 +112,8 @@ internal sealed class MasterPortalView : IDisposable
         ImGui.TextWrapped("Character: "+status.CharacterName+" · home world "+status.HomeWorld);
         ImGui.TextWrapped("Last observed location: "+(status.Zone.Length>0 ? status.Zone : "Not observed"));
         ImGui.TextWrapped(status.CurrentWorld+" · "+status.DataCenter);
+        ImGui.TextUnformatted(status.X is not null && status.Y is not null?$"Map coordinates · X {status.X:F1} · Y {status.Y:F1}":"Coordinates not observed");
+        ImGui.TextUnformatted($"{status.Job} · Level {status.Level}");
         ImGui.TextUnformatted((status.LoginTimeSource=="login-event" ? "Login observed: " : "First seen: ")+LocalDate(status.LoginObservedAtUtc));
         var duration=fresh && status.LoggedIn && DateTimeOffset.TryParse(status.LoginObservedAtUtc,out var login)
             ? Duration(session.Now-login) : "Unknown";
@@ -117,11 +136,23 @@ internal sealed class MasterPortalView : IDisposable
         ImGui.InputTextMultiline("##MasterReplyButtons",ref draft.Choices,2591,new Vector2(-1,70*scale));EditingText|=ImGui.IsItemActive();
         ImGui.TextWrapped("Optional: one button per line, up to 32 buttons with 80 characters each.");
         ImGui.Checkbox("Allow a written reply",ref draft.AllowReply);
+        if(pet.Settings.Templates.Count>0 && ImGui.BeginCombo("Saved template","Choose…")) {
+            foreach(var template in pet.Settings.Templates)if(ImGui.Selectable(template.Name)){draft.Text=template.Text;draft.Choices=string.Join('\n',template.Choices);draft.AllowReply=template.AllowReply;}
+            ImGui.EndCombo();
+        }
         var error=MasterPortalPolicy.ChoiceError(draft.Choices,draft.AllowReply,out var labels);
         if(error is not null)ImGui.TextWrapped(error);
         ImGui.BeginDisabled(string.IsNullOrWhiteSpace(draft.Text) || error is not null);
         if(ImGui.Button("Send prompt"))session.Action(new AdminAction{Action="sendMessage",Pet=pet.Name,Text=draft.Text.Trim(),Choices=labels,AllowReply=draft.AllowReply});
         ImGui.EndDisabled();
+        Input("Template name",ref templateName,60);
+        ImGui.BeginDisabled(templateName.Trim().Length==0 || string.IsNullOrWhiteSpace(draft.Text) || error is not null || pet.Settings.Templates.Count>=20);
+        if(ImGui.Button("Save template")) {
+            var config=Clone(pet.Settings);config.Templates.RemoveAll(t=>t.Name==templateName.Trim());config.Templates.Add(new(){Name=templateName.Trim(),Text=draft.Text,Choices=labels,AllowReply=draft.AllowReply});
+            session.Action(new(){Action="saveSettings",Pet=pet.Name,Settings=config});
+        }
+        ImGui.EndDisabled();
+        if(ImGui.TreeNode("Preview prompt")){ImGui.TextColored(Style.Accent,"Message from Master");ImGui.TextWrapped(draft.Text);foreach(var label in labels)ImGui.Button(label+"##preview");ImGui.TreePop();}
     }
     private void DrawReminders(AdminPet pet)
     {
@@ -174,6 +205,102 @@ internal sealed class MasterPortalView : IDisposable
         }
         if(pet.Activity.Count==0)ImGui.TextUnformatted("No recent responses.");
     }
+    private static DynamicSettings Clone(DynamicSettings value)=>System.Text.Json.JsonSerializer.Deserialize<DynamicSettings>(System.Text.Json.JsonSerializer.Serialize(value,ServiceClient.Json),ServiceClient.Json)!;
+    private static void DrawOverview(AdminPet pet)
+    {
+        Style.Title(pet.Name,pet.Archived?"Archived · history retained":"Your shared dynamic");
+        if(ImGui.BeginTable("metrics",3)) {
+            ImGui.TableNextColumn();Style.Metric("Observed today",Duration(TimeSpan.FromSeconds(pet.Stats.TodaySeconds)),"today");
+            ImGui.TableNextColumn();Style.Metric("Observed lifetime",Duration(TimeSpan.FromSeconds(pet.Stats.TotalSeconds)),"lifetime");
+            ImGui.TableNextColumn();Style.Metric("Awaiting a reply",pet.Pending.Count.ToString(),"pending");ImGui.EndTable();
+        }
+        Style.DailyChart(pet.Stats.Daily);
+    }
+    private void DrawAttention(AdminPet pet)
+    {
+        Style.Title("A signal home","Contact requests from this pet");
+        foreach(var item in pet.Attention.Where(a=>a.HandledAtUtc is null)) {
+            ImGui.PushID(item.Id);ImGui.TextWrapped(item.Text);ImGui.TextColored(Style.Muted,LocalDate(item.CreatedAtUtc));
+            if(ImGui.Button("Mark handled"))session.Action(new(){Action="handleAttention",Pet=pet.Name,EventId=item.Id});
+            ImGui.SameLine();if(ImGui.Button("Prepare reply")){if(!drafts.ContainsKey(pet.Name))drafts[pet.Name]=new();drafts[pet.Name].Text="I'm here. What do you need?";}
+            ImGui.PopID();
+        }
+        if(!pet.Attention.Any(a=>a.HandledAtUtc is null))ImGui.TextColored(Style.Muted,"No requests waiting.");
+    }
+    private void DrawPlaytime(AdminPet pet)
+    {
+        DrawOverview(pet);
+        Input("From day (yyyy-MM-dd)",ref statFrom,10);Input("Through day (yyyy-MM-dd)",ref statTo,10);
+        var custom=pet.Stats.Daily.Where(d=>(statFrom.Length==0 || string.CompareOrdinal(d.Day,statFrom)>=0) && (statTo.Length==0 || string.CompareOrdinal(d.Day,statTo)<=0)).Sum(d=>d.Seconds);
+        ImGui.TextColored(Style.Accent,"Selected period · "+Duration(TimeSpan.FromSeconds(custom)));
+        ImGui.TextWrapped($"This week {Duration(TimeSpan.FromSeconds(pet.Stats.WeekSeconds))} · This month {Duration(TimeSpan.FromSeconds(pet.Stats.MonthSeconds))}");
+        ImGui.TextWrapped($"{pet.Stats.SessionCount} observed sessions · average {Duration(TimeSpan.FromSeconds(pet.Stats.AverageSessionSeconds))} · longest {Duration(TimeSpan.FromSeconds(pet.Stats.LongestSessionSeconds))}");
+        ImGui.TextWrapped("Only recorded intervals count. Unobserved time and kill-switch pauses are excluded. Flags describe game state, not human engagement.");
+        foreach(var (title,rows) in new[]{("By job",pet.Stats.Jobs),("By location",pet.Stats.Zones),("By character",pet.Stats.Characters)}) {
+            if(ImGui.CollapsingHeader(title))foreach(var row in rows) {ImGui.TextWrapped(row.Label);ImGui.ProgressBar((float)(row.Seconds/Math.Max(1,pet.Stats.TotalSeconds)),new Vector2(-1,20),Duration(TimeSpan.FromSeconds(row.Seconds)));}
+        }
+    }
+    private void DrawTimeline(AdminPet pet,string kind)
+    {
+        var queryKind=kind.Length>0?kind:"session,zone,position,state,job,duty,inventory,loot,trade,retainer,gap";
+        if(historyPageKind!=pet.Name+queryKind && !session.Busy){historyPageKind=pet.Name+queryKind;session.LoadHistory(queryKind,"","","");}
+        Input("Find an observation",ref timelineFilter,100);
+        Input("From local date (yyyy-MM-dd)",ref historyFrom,10);Input("Before local date (yyyy-MM-dd)",ref historyTo,10);
+        if(ImGui.Button("Apply history filters")) {
+            if(TryHistoryDate(historyFrom,out var from) && TryHistoryDate(historyTo,out var to))session.LoadHistory(queryKind,from,to,timelineFilter);
+        }
+        ImGui.SameLine();if(ImGui.Button("Export displayed CSV"))ExportHistory(session.History,pet.Name);
+        var records=session.History;
+        ImGui.TextColored(Style.Muted,$"{records.Count} observations loaded · older records remain in the service");
+        foreach(var r in records) {
+            ImGui.Separator();ImGui.TextColored(Style.Accent,r.Kind.ToUpperInvariant()+" · "+LocalDate(r.AtUtc));
+            ImGui.TextColored(Style.Muted,r.CharacterName+" @ "+r.HomeWorld);
+            foreach(var (key,value) in r.Data)ImGui.TextWrapped(key+": "+value);
+        }
+        if(session.HistoryCursor.Length>0 && ImGui.Button("Load older observations")){if(TryHistoryDate(historyFrom,out var from) && TryHistoryDate(historyTo,out var to))session.LoadHistory(queryKind,from,to,timelineFilter,true);}
+        if(records.Count==0)ImGui.TextColored(Style.Muted,"No matching observations yet.");
+    }
+    private static bool TryHistoryDate(string text,out string utc)
+    {
+        utc="";if(text.Length==0)return true;
+        if(!DateTime.TryParseExact(text,"yyyy-MM-dd",CultureInfo.InvariantCulture,DateTimeStyles.None,out var date))return false;
+        utc=LocalState.Stamp(new DateTimeOffset(DateTime.SpecifyKind(date,DateTimeKind.Local)));return true;
+    }
+    private void ExportHistory(List<ActivityRecord> records,string name)
+    {
+        try {
+            static string Cell(string text)=>"\""+(text.Length>0 && "=+-@".Contains(text[0])?"\t":"")+text.Replace("\"","\"\"")+"\"";
+            var rows=new List<string>{"Time UTC,Character,Home world,Kind,Details"};
+            rows.AddRange(records.Select(r=>string.Join(',',new[]{r.AtUtc,r.CharacterName,r.HomeWorld,r.Kind,System.Text.Json.JsonSerializer.Serialize(r.Data)}.Select(Cell))));
+            var folder=Path.Combine(Plugin.PluginInterface.GetPluginConfigDirectory(),"exports");Directory.CreateDirectory(folder);
+            var file=Path.Combine(folder,$"PetService-{name}-{DateTime.Now:yyyyMMdd-HHmmss}.csv");File.WriteAllLines(file,rows,new System.Text.UTF8Encoding(true));
+            Plugin.Chat.Print("Pet Service: CSV saved to "+file);
+        } catch {Plugin.Chat.PrintError("Pet Service: Could not save the CSV export.");}
+    }
+    private void DrawDynamic(AdminPet pet)
+    {
+        if(settingsPet!=pet.Name){settingsPet=pet.Name;editSettings=Clone(pet.Settings);contactDraft=string.Join('\n',editSettings.Contacts);}
+        Style.Title("Your dynamic","Speech and contact presets");
+        var garble=editSettings.GarbleEnabled;if(ImGui.Checkbox("Garble outgoing speech",ref garble))editSettings.GarbleEnabled=garble;
+        var strength=editSettings.GarbleStrength;if(ImGui.SliderInt("Strength",ref strength,1,100))editSettings.GarbleStrength=strength;
+        if(ImGui.BeginCombo("Style",editSettings.GarbleStyle)) {foreach(var name in new[]{"muffled","soft","playful"})if(ImGui.Selectable(name))editSettings.GarbleStyle=name;ImGui.EndCombo();}
+        ImGui.TextWrapped("Transformations happen locally. Incoming chat, commands and Pet Service replies are untouched. The pet's kill switch disables garbling.");
+        ImGui.TextUnformatted("Contact presets · one per line in display order");
+        ImGui.InputTextMultiline("##contacts",ref contactDraft,2591,new Vector2(-1,145));EditingText|=ImGui.IsItemActive();
+        var error=MasterPortalPolicy.ChoiceError(contactDraft,true,out var contacts);
+        if(error is not null)ImGui.TextWrapped(error);
+        ImGui.BeginDisabled(error is not null || pet.Archived);
+        if(ImGui.Button("Save dynamic")){editSettings.Contacts=contacts;session.Action(new(){Action="saveSettings",Pet=pet.Name,Settings=Clone(editSettings)});}
+        ImGui.EndDisabled();
+        if(ImGui.Button("Reload saved settings")){settingsPet="";}
+        foreach(var template in editSettings.Templates.ToArray()){ImGui.PushID(template.Name);ImGui.TextUnformatted(template.Name);ImGui.SameLine();if(ImGui.SmallButton("Remove template")){editSettings.Templates.Remove(template);}ImGui.PopID();}
+    }
+    private void DrawProfile(AdminPet pet)
+    {
+        Style.Title("Profile management",pet.Archived?"Archived":"Active");
+        if(ImGui.Button(pet.Archived?"Restore profile…":"Archive profile…"))Confirm(new(){Action=pet.Archived?"restorePet":"archivePet",Pet=pet.Name},pet.Archived?"Restore this profile? Generate a new pairing code afterward.":"Archive and revoke access? History stays saved; pending prompts are cancelled.");
+        if(ImGui.Button("Permanently delete profile…")){deleteName="";Confirm(new(){Action="deletePet",Pet=pet.Name},"Delete this pet, pairing, reminders, prompts and service history permanently? Already delivered Discord messages remain. Type the profile name to confirm.");}
+    }
     private void Input(string label,ref string value,int max)
     {
         ImGui.TextUnformatted(label);ImGui.SetNextItemWidth(-1);
@@ -187,8 +314,9 @@ internal sealed class MasterPortalView : IDisposable
         var open=true;
         if(ImGui.BeginPopupModal(id,ref open,ImGuiWindowFlags.AlwaysAutoResize)) {
             ImGui.TextWrapped(confirmationText);
-            ImGui.BeginDisabled(session.Busy || confirmation is null);
-            if(ImGui.Button("Confirm")){session.Action(confirmation!);confirmation=null;ImGui.CloseCurrentPopup();}
+            if(confirmation?.Action=="deletePet")Input("Type profile name",ref deleteName,32);
+            ImGui.BeginDisabled(session.Busy || confirmation is null || (confirmation.Action=="deletePet" && deleteName!=confirmation.Pet));
+            if(ImGui.Button("Confirm")){session.Action(confirmation!.Action=="deletePet"?confirmation with{Confirmation=deleteName}:confirmation);confirmation=null;deleteName="";ImGui.CloseCurrentPopup();}
             ImGui.EndDisabled();ImGui.SameLine();
             if(ImGui.Button("Keep it")){confirmation=null;ImGui.CloseCurrentPopup();}
             ImGui.EndPopup();
@@ -199,6 +327,7 @@ internal sealed class MasterPortalView : IDisposable
     {
         var action=session.CompletedAction;var result=session.CompletedResult;
         if(action is null || result is null)return;
+        if(action.Action=="saveSettings" || action.Action=="deletePet" || action.Action=="archivePet")settingsPet="";
         if(action.Action=="createPet")newPet="";
         if(action.Action=="sendMessage" && action.Pet is not null)drafts.Remove(action.Pet);
         if(action.Action=="addReminder")reminderLabel="";
@@ -211,7 +340,7 @@ internal sealed class MasterPortalView : IDisposable
     private void ClearFields()
     {
         password="";newPet="";filter="";reminderLabel="";reminderTime="18:00";pairingCode="";pairingPet="";pairingExpiry="";
-        confirmation=null;confirmationText="";confirmRequested=false;drafts.Clear();EditingText=false;
+        confirmation=null;confirmationText="";confirmRequested=false;drafts.Clear();EditingText=false;historyPageKind="";historyFrom="";historyTo="";statFrom="";statTo="";settingsPet="";editSettings=new();contactDraft="";deleteName="";timelineFilter="";
     }
     internal void Lock(){session.Lock();ClearFields();hadAccess=false;}
     public void Dispose(){ClearFields();session.Dispose();}

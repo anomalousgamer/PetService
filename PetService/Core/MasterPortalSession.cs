@@ -7,6 +7,16 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     private string password="";
     private CancellationTokenSource cancel=new();
     private Task<AdminDashboard>? dashboardTask;
+    private Task<HistoryPage>? historyTask;
+    private bool appendHistory;
+    internal List<ActivityRecord> History {get;private set;}=[];
+    internal string HistoryCursor {get;private set;}="";
+    internal string HistoryKind {get;private set;}="";
+    internal void LoadHistory(string kind,string from,string to,string search,bool append=false) {
+        if(!Unlocked || Busy)return;
+        appendHistory=append;HistoryKind=kind;
+        historyTask=client.History(password,Selected,kind,from,to,search,append?HistoryCursor:"",cancel.Token);
+    }
     private Task<AdminActionResult>? actionTask;
     private AdminAction? activeAction,retryAction;
     private long nextRefresh;
@@ -16,7 +26,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     internal string Error { get; private set; }="";
     internal string Notice { get; private set; }="";
     internal bool Unlocked=>password.Length>0 && Dashboard is not null;
-    internal bool Busy=>dashboardTask is not null || actionTask is not null;
+    internal bool Busy=>dashboardTask is not null || actionTask is not null || historyTask is not null;
     internal bool CanRetry=>retryAction is not null && Unlocked && !Busy;
     internal bool AutoRefresh { get; set; }=true;
     internal DateTimeOffset Now=>DateTimeOffset.UtcNow.AddMilliseconds(clockOffset);
@@ -35,7 +45,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     internal void Select(string pet)
     {
         if(Busy || !Unlocked || !MasterPortalPolicy.ValidName(pet))return;
-        Selected=pet;Refresh();
+        History=[];HistoryCursor="";HistoryKind="";Selected=pet;Refresh();
     }
     private static string Fingerprint(AdminAction action)=>JsonSerializer.Serialize(action with{RequestId=""},ServiceClient.Json);
     internal void Action(AdminAction value)
@@ -49,6 +59,11 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     internal void Retry(){if(CanRetry)Action(retryAction!);}
     internal void Update()
     {
+        if(historyTask is {IsCompleted:true}) {
+            var task=historyTask;historyTask=null;
+            try {var result=task.GetAwaiter().GetResult();History=appendHistory?[..History,..result.Records]:result.Records;HistoryCursor=result.NextCursor??"";Error="";}
+            catch(Exception e){Failure(e);}
+        }
         if(dashboardTask is {IsCompleted:true}) {
             var task=dashboardTask;dashboardTask=null;
             try {
@@ -63,6 +78,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
                 CompletedResult=task.GetAwaiter().GetResult();CompletedAction=activeAction;retryAction=null;
                 Notice=activeAction?.Action switch{"sendMessage"=>"Message queued.","createPet"=>"Pet profile created.","pair"=>"Pairing code generated.","revoke"=>"Device revoked.","addReminder"=>"Daily reminder added.","disableReminder"=>"Reminder disabled.","cancelPrompt"=>"Pending prompt cancelled.",_=>"Saved."};
                 if(activeAction?.Action=="createPet")Selected=CompletedResult.Pet;
+                if(activeAction?.Action=="deletePet")Selected="";
                 Refresh();
             } catch(Exception exception){Failure(exception);}
             activeAction=null;
@@ -85,6 +101,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     internal void Lock()
     {
         cancel.Cancel();cancel.Dispose();cancel=new();
+        ObserveFailure(historyTask);historyTask=null;History=[];HistoryCursor="";HistoryKind="";
         ObserveFailure(dashboardTask);ObserveFailure(actionTask);dashboardTask=null;actionTask=null;
         password="";Dashboard=null;Selected="";activeAction=null;retryAction=null;CompletedAction=null;CompletedResult=null;
         Error="";Notice="";clockOffset=0;nextRefresh=0;

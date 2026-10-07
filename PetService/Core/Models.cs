@@ -33,6 +33,7 @@ public sealed class Choice
     public string ClientAtUtc { get; set; } = "";
     public int? Minutes { get; set; }
     public string? Reply { get; set; }
+    public string? Request { get; set; }
     public int? OptionIndex { get; set; }
 }
 public sealed class Observation
@@ -54,6 +55,16 @@ public sealed class Observation
     public string CurrentWorld { get; set; } = "";
     public string DataCenter { get; set; } = "";
     public string Zone { get; set; } = "";
+    public uint MapId { get; set; }
+    public double? X { get; set; }
+    public double? Y { get; set; }
+    public string Job { get; set; }="";
+    public int Level { get; set; }
+    public bool Crafting { get; set; }
+    public bool Gathering { get; set; }
+    public bool Mounted { get; set; }
+    public bool Cutscene { get; set; }
+    public bool Unconscious { get; set; }
     public uint TerritoryId { get; set; }
 }
 public sealed class PairResult
@@ -69,6 +80,8 @@ public sealed class SyncResult
     public string PetName { get; set; } = "";
     public List<Schedule> Reminders { get; set; } = [];
     public List<Prompt> Occurrences { get; set; } = [];
+    public List<string> AcceptedActivityIds { get; set; }=[];
+    public DynamicSettings Settings { get; set; }=new();
     public List<string> AcceptedEventIds { get; set; } = [];
 }
 public sealed class DeviceEventResult

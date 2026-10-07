@@ -11,6 +11,7 @@ internal class AdminProfile
 {
     public string Id { get; set; }="";
     public string Name { get; set; }="";
+    public bool Archived {get;set;}
     public bool Paired { get; set; }
     public string? PairingExpiresAtUtc { get; set; }
     public int PendingCount { get; set; }
@@ -20,6 +21,10 @@ internal sealed class AdminPet : AdminProfile
 {
     public List<AdminReminder> Reminders { get; set; }=[];
     public List<Prompt> Pending { get; set; }=[];
+    public List<ActivityRecord> Timeline {get;set;}=[];
+    public List<AttentionItem> Attention {get;set;}=[];
+    public DynamicSettings Settings {get;set;}=new();
+    public PlaytimeStats Stats {get;set;}=new();
     public List<AdminActivity> Activity { get; set; }=[];
 }
 internal sealed class AdminReminder
@@ -55,6 +60,9 @@ internal sealed record AdminAction
     public string Action { get; init; }="";
     public string RequestId { get; init; }=Guid.NewGuid().ToString();
     public string? Pet { get; init; }
+    public DynamicSettings? Settings {get;init;}
+    public string? EventId {get;init;}
+    public string? Confirmation {get;init;}
     public string? Name { get; init; }
     public string? Label { get; init; }
     public string? Time { get; init; }
@@ -71,3 +79,5 @@ internal sealed class AdminActionResult
     public string? Code { get; set; }
     public string? ExpiresAtUtc { get; set; }
 }
+
+internal sealed class HistoryPage {public List<ActivityRecord> Records {get;set;}=[];public string? NextCursor {get;set;}}

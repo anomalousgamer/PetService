@@ -1,92 +1,80 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Windowing;
-
 namespace PetService.Windows;
-
-internal sealed class SettingsWindow : Window, IDisposable
+internal sealed class SettingsWindow : Window,IDisposable
 {
     private readonly Plugin plugin;
-    private string code = "";
+    private string code="";
     private readonly MasterPortalView master=new();
-    internal bool EditingText { get; private set; }
-
-    public SettingsWindow(Plugin plugin) : base("Pet Service")
+    internal bool EditingText {get;private set;}
+    internal SettingsWindow(Plugin plugin):base("Pet Service")
     {
-        this.plugin = plugin;
-        SizeConstraints = new() { MinimumSize = new Vector2(480, 320), MaximumSize = new Vector2(float.MaxValue) };
-        Size = new Vector2(700, 560);
-        SizeCondition = ImGuiCond.FirstUseEver;
+        this.plugin=plugin;SizeConstraints=new(){MinimumSize=new Vector2(650,490),MaximumSize=new(float.MaxValue)};
+        Size=new Vector2(850,690);SizeCondition=ImGuiCond.FirstUseEver;
     }
-
+    public override void PreDraw()=>Style.Push();
+    public override void PostDraw()=>Style.Pop();
     public override void Draw()
     {
         EditingText=false;
-        if(ImGui.BeginTabBar("PetServicePages")) {
+        Style.Title("PET SERVICE","A place for your shared dynamic · 0.2.0.0");
+        ImGui.BeginChild("PetServiceMain",new Vector2(0,-85),false);
+        if(ImGui.BeginTabBar("roles")) {
             if(ImGui.BeginTabItem("Pet")){DrawPet();ImGui.EndTabItem();}
-            if(ImGui.BeginTabItem("Master")) {
-                master.Draw();EditingText=master.EditingText;
-                ImGui.Separator();var paused=plugin.KillSwitchOn;
-                if(ImGui.Checkbox("Local kill switch — stop master input on this device",ref paused))plugin.SetEnabled(!paused);
-                ImGui.EndTabItem();
-            }
+            if(ImGui.BeginTabItem("Master")){master.Draw();EditingText|=master.EditingText;ImGui.EndTabItem();}
             ImGui.EndTabBar();
         }
+        ImGui.EndChild();
+        ImGui.Separator();var paused=plugin.KillSwitchOn;
+        if(ImGui.Checkbox("Kill switch · pause this device",ref paused))plugin.SetEnabled(!paused);
+        if(paused)ImGui.TextColored(Style.Accent,"Master input, recording, sharing and garbling are paused.");
+        if(plugin.SaveError.Length>0)ImGui.TextWrapped(plugin.SaveError);
+        if(!paused && plugin.ActivityError.Length>0)ImGui.TextWrapped(plugin.ActivityError);
     }
     private void DrawPet()
     {
-        if (plugin.IsPaired)
-            ImGui.TextUnformatted("Paired profile: " + plugin.Configuration.PetName);
-        else
-            ImGui.TextUnformatted("Setup");
-        ImGui.TextWrapped(plugin.ServiceStatus);
-        ImGui.Separator();
-        ImGui.BeginDisabled(!plugin.CanCallMaster);
-        if(ImGui.Button("Call master"))plugin.RequestAttention();
-        ImGui.EndDisabled();
-        if(plugin.CallCooldownSeconds>0)ImGui.TextUnformatted($"Call available in {plugin.CallCooldownSeconds}s.");
-
-        var paused = plugin.KillSwitchOn;
-        if (ImGui.Checkbox("Kill switch — stop all master input", ref paused))
-            plugin.SetEnabled(!paused);
-        paused = plugin.KillSwitchOn;
-        ImGui.TextWrapped(paused
-            ? "ON: master input and status/location sharing are paused. A kill-switch notice is queued for the master. Stays on until you turn it off."
-            : "OFF: the service can send reminders and messages and receive your status/location.");
-
-        if (!plugin.IsPaired)
-        {
+        if(!ImGui.BeginTabBar("petpages"))return;
+        if(ImGui.BeginTabItem("Home")) {
+            ImGui.Spacing();Style.Title(plugin.IsPaired?plugin.Configuration.PetName:"Welcome home",plugin.ServiceStatus);
+            Style.Metric("Your connection",plugin.KillSwitchOn?"Paused":plugin.IsPaired?"Paired":"Setup needed","petconnection");
             ImGui.Spacing();
-            ImGui.InputText("One-time pairing code", ref code, 80, ImGuiInputTextFlags.Password);
-            EditingText|=ImGui.IsItemActive();
-            ImGui.BeginDisabled(plugin.NetworkBusy || string.IsNullOrWhiteSpace(code));
-            if (ImGui.Button("Pair")) { plugin.Pair(code); code = ""; }
-            ImGui.EndDisabled();
-            ImGui.TextWrapped("Setup is saved for future logins. This shares character status, zone/world/DC, and explicit popup replies with the master, including on alts. Ordinary game chat is not collected.");
+            Style.Metric("Your voice",plugin.KillSwitchOn || !plugin.Configuration.Dynamic.GarbleEnabled?"Natural":"Garbling · "+plugin.Configuration.Dynamic.GarbleStyle,"petvoice");
+            ImGui.TextWrapped(plugin.KillSwitchOn?"You choose when to resume. The master cannot turn your kill switch off.":"Use Contact to send a little signal home. Use Setup to see your pairing and sharing details.");
+            if(Style.IconButton(FontAwesomeIcon.Heart,"Call master",new Vector2(-1,52)) && plugin.CanCallMaster)plugin.RequestAttention();
+            if(plugin.CallCooldownSeconds>0)ImGui.TextColored(Style.Muted,$"Next contact in {plugin.CallCooldownSeconds}s.");
+            ImGui.EndTabItem();
         }
-        else
-        {
-            ImGui.Spacing();
-            ImGui.BeginDisabled(plugin.NetworkBusy);
-            if (ImGui.Button("Unpair…")) ImGui.OpenPopup("Unpair this device?");
+        if(ImGui.BeginTabItem("Contact")) {
+            Style.Title("A little signal home","Choose what you want your master to hear.");
+            ImGui.BeginDisabled(!plugin.CanCallMaster);
+            var icons=new[]{FontAwesomeIcon.Bell,FontAwesomeIcon.LifeRing,FontAwesomeIcon.Cloud,FontAwesomeIcon.Heart,FontAwesomeIcon.Star,FontAwesomeIcon.Moon,FontAwesomeIcon.HandHoldingHeart,FontAwesomeIcon.Comment};
+            for(var i=0;i<plugin.Configuration.Dynamic.Contacts.Count;i++) {
+                var request=plugin.Configuration.Dynamic.Contacts[i];ImGui.PushID(i);
+                if(Style.IconButton(icons[i%icons.Length],request,new Vector2(-1,52)))plugin.RequestAttention(request);
+                ImGui.PopID();
+            }
             ImGui.EndDisabled();
+            ImGui.TextWrapped(plugin.CallCooldownSeconds>0?$"Contact queued. Next request in {plugin.CallCooldownSeconds}s.":"Requests are saved locally, then delivered through Discord when connected.");
+            ImGui.EndTabItem();
         }
-
-        var confirmationOpen = true;
-        if (ImGui.BeginPopupModal("Unpair this device?", ref confirmationOpen, ImGuiWindowFlags.AlwaysAutoResize))
-        {
-            ImGui.TextUnformatted("Clear local pairing, cached reminders, and unsent replies?");
-            ImGui.TextUnformatted("Request a new pairing code if you want to reconnect.");
-            ImGui.BeginDisabled(plugin.NetworkBusy);
-            if (ImGui.Button("Unpair")) { plugin.Unpair(); ImGui.CloseCurrentPopup(); }
-            ImGui.EndDisabled();
-            ImGui.SameLine();
-            if (ImGui.Button("Cancel")) ImGui.CloseCurrentPopup();
-            ImGui.EndPopup();
+        if(ImGui.BeginTabItem("Setup")) {
+            ImGui.TextWrapped(plugin.ServiceStatus);ImGui.Separator();
+            if(!plugin.IsPaired){ImGui.InputText("Pairing code",ref code,80,ImGuiInputTextFlags.Password);EditingText|=ImGui.IsItemActive();ImGui.BeginDisabled(plugin.NetworkBusy || code.Length==0);if(ImGui.Button("Pair this device")){plugin.Pair(code);code="";}ImGui.EndDisabled();}
+            else {ImGui.TextUnformatted("Paired as "+plugin.Configuration.PetName);if(ImGui.Button("Unpair…"))ImGui.OpenPopup("Unpair this device?");}
+            var open=true;if(ImGui.BeginPopupModal("Unpair this device?",ref open,ImGuiWindowFlags.AlwaysAutoResize)) {
+                ImGui.TextWrapped("Clear pairing, cached prompts and unsent observations? Server history remains with the master.");
+                if(ImGui.Button("Unpair")){plugin.Unpair();ImGui.CloseCurrentPopup();}ImGui.SameLine();if(ImGui.Button("Keep pairing"))ImGui.CloseCurrentPopup();ImGui.EndPopup();
+            }
+            ImGui.Spacing();Style.Title("What is shared","Recording begins only while paired and resumed.");
+            ImGui.TextWrapped("The master can see observed playtime, your character, zone/world/DC and coordinates, duties, job/level and activity flags, supported inventory changes, trade offers and venture result screens. Explicit Pet Service requests, replies, choices, snoozes and safety notices are saved too.");
+            ImGui.TextWrapped("Game chat, original or garbled, and conversation partners are never collected. Garbling works locally on outgoing speech. Trade completion and inventory item sources can be unknown; unobserved time is excluded.");
+            ImGui.TextWrapped("The kill switch stops master prompts, recording, uploads and garbling. Only the safety notice is sent. /toh release frees gameplay for this login while sharing continues.");
+            if(ImGui.Button("What's new"))Plugin.Commands.ProcessCommand("/toh changes");ImGui.SameLine();if(ImGui.Button("Check for updates"))Plugin.Commands.ProcessCommand("/toh checkupdates");
+            ImGui.EndTabItem();
         }
-
-        if (!string.IsNullOrEmpty(plugin.SaveError)) ImGui.TextWrapped(plugin.SaveError);
-        if (!plugin.KillSwitchOn && !string.IsNullOrEmpty(plugin.ScheduleError)) ImGui.TextWrapped(plugin.ScheduleError);
+        ImGui.EndTabBar();
     }
     internal void ClearTextFocus(){EditingText=false;master.ClearTextFocus();}
     public override void OnClose(){code="";EditingText=false;master.Lock();}

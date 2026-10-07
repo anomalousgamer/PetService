@@ -45,7 +45,7 @@ public sealed class ServiceClient : IDisposable
         return JsonSerializer.Deserialize<T>(buffer.ToArray(),Json) ?? throw new ServiceFailure("Invalid service response.");
     }
     public Task<PairResult> Pair(string code,CancellationToken cancel) => Post<PairResult>("/api/pair",new { code },null,cancel);
-    public Task<SyncResult> Sync(string token,Observation status,List<Choice> events,CancellationToken cancel) => Post<SyncResult>("/api/sync",new { status,events },token,cancel);
+    public Task<SyncResult> Sync(string token,Observation status,List<Choice> events,List<ActivityRecord> activity,CancellationToken cancel) => Post<SyncResult>("/api/sync",new { status,events,activity },token,cancel);
     public Task<DeviceEventResult> DeviceEvents(string token,List<Choice> events,CancellationToken cancel) => Post<DeviceEventResult>("/api/device/events",new { events },token,cancel);
     public void Dispose() => http.Dispose();
 }

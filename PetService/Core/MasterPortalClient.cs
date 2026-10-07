@@ -20,6 +20,11 @@ internal sealed class MasterPortalClient : IDisposable
         "/api/admin/dashboard"+(pet.Length==0 ? "" : "?pet="+Uri.EscapeDataString(pet)),password,null,cancel);
     internal Task<AdminActionResult> Action(string password,AdminAction action,CancellationToken cancel)=>Request<AdminActionResult>(
         "/api/admin/action",password,action,cancel);
+    internal Task<HistoryPage> History(string password,string pet,string kind,string from,string to,string search,string cursor,CancellationToken cancel) {
+        var query="?pet="+Uri.EscapeDataString(pet)+"&kind="+Uri.EscapeDataString(kind);
+        foreach(var (key,value) in new[]{("from",from),("to",to),("search",search),("cursor",cursor)})if(value.Length>0)query+="&"+key+"="+Uri.EscapeDataString(value);
+        return Request<HistoryPage>("/api/admin/history"+query,password,null,cancel);
+    }
     private async Task<T> Request<T>(string route,string password,object? payload,CancellationToken cancel)
     {
         using var deadline=CancellationTokenSource.CreateLinkedTokenSource(cancel);

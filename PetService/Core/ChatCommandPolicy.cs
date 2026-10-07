@@ -27,7 +27,7 @@ internal static class ChatCommandPolicy
             "/say", "/s", "/yell", "/y", "/shout", "/sh", "/tell", "/t",
             "/reply", "/r", "/party", "/p", "/alliance", "/a",
             "/freecompany", "/fc", "/pvpteam", "/pt", "/novice", "/n",
-            "/echo", "/e", "/petservice", "/linkshell", "/l", "/cwlinkshell", "/cwl",
+            "/echo", "/e", "/petservice", "/toh", "/linkshell", "/l", "/cwlinkshell", "/cwl",
         };
         for (var i = 1; i <= 8; i++)
         {
