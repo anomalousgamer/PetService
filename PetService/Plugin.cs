@@ -33,7 +33,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static INotificationManager Notifications {get;private set;}=null!;
     private readonly ActivityRecorder recorder;
     private readonly TravelRecorder travel;
-    private readonly UpdateNotifications updates=new();
+    private readonly UpdateNotifications updates;
     private readonly ChangesWindow changes;
     private long changesEligible;
     private bool changesShown;
@@ -71,6 +71,7 @@ public sealed class Plugin : IDalamudPlugin
     internal bool IsPaired => Configuration.DeviceToken.Length > 0 && !Configuration.Revoked
         && ServiceClient.MatchesBundledService(Configuration.ServiceUrl);
     internal bool KillSwitchOn => !masterInput.Enabled;
+    internal string ObservedSessionId=>sessionId;
     internal bool CanCallMaster=>IsPaired && !KillSwitchOn && Ready && Environment.TickCount64>=nextAttentionRequest;
     internal int CallCooldownSeconds=>(int)Math.Max(0,(nextAttentionRequest-Environment.TickCount64+999)/1000);
     internal void RequestObservationUpload()=>activityUploadRequested=true;
@@ -88,11 +89,17 @@ public sealed class Plugin : IDalamudPlugin
 
     public Plugin()
     {
-        Configuration=PluginInterface.GetPluginConfig() as Configuration ?? new();
+        var savedConfiguration=PluginInterface.GetPluginConfig() as Configuration;
+        Configuration=savedConfiguration ?? new();
         Configuration.Reminders ??= []; Configuration.Prompts ??= []; Configuration.Outbox ??= [];
         Configuration.SafetyOutbox ??= [];
         Configuration.DisplayedChatIds ??=[];
         Configuration.ActivityOutbox ??=[];Configuration.Dynamic ??=new();
+        Configuration.Dynamic.NormalizeContacts();
+        if(Configuration.ChatColourRevision<1) {
+            Mutate(c=>{if(c.MasterChatColour==45)c.MasterChatColour=540;if(c.MasterChatColour==541)c.MasterChatColour=561;c.ChatColourRevision=1;});
+        }
+        updates=new(this,savedConfiguration is not null);
         masterInput=new(Configuration.Enabled);
         if(KillSwitchOn)ServiceStatus="Kill switch is on. Master input and status sharing are paused.";
         else if(Configuration.DeviceToken.Length>0 && !ServiceClient.MatchesBundledService(Configuration.ServiceUrl))
@@ -114,7 +121,6 @@ public sealed class Plugin : IDalamudPlugin
         Commands.AddHandler("/toh",new CommandInfo(Command){HelpMessage="Open Pet Service. /toh call, off, on, release, changes, checkupdates."});
         previousLogin=ClientState.IsLoggedIn;
         if(previousLogin && IsPaired && !KillSwitchOn)StartSession("first-observed");
-        if(!IsPaired)settings.IsOpen=true;
     }
     private void OnLogin() {previousLogin=true;if(IsPaired && !KillSwitchOn)StartSession("login-event");nextSync=0;nextEvaluation=0;}
     private void StartSession(string source) {sessionId=Guid.NewGuid().ToString();loginAt=LocalState.Stamp(Now);loginSource=source;localRelease=false;}
@@ -253,7 +259,7 @@ public sealed class Plugin : IDalamudPlugin
             recorder.Update(Observe);travel.Update(Observe);updates.Update();
             if(Ready && !changesShown) {
                 if(changesEligible==0)changesEligible=Environment.TickCount64+3000;
-                if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.3.0.0")changes.IsOpen=true;}
+                if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.3.1.0")changes.IsOpen=true;}
             } else if(!Ready)changesEligible=0;
             // Only explicit safety notices use this route. It carries no observation
             // and remains usable while the kill switch pauses normal synchronization.
@@ -320,7 +326,7 @@ public sealed class Plugin : IDalamudPlugin
                 if(result.PetId!=Configuration.PetId)throw new ServiceFailure("Profile mismatch.");
                 var serverTime=LocalState.Parse(result.ServerTimeUtc);
                 if(Mutate(c=>{
-                    c.ActivityOutbox.RemoveAll(e=>result.AcceptedActivityIds.Contains(e.Id));c.Dynamic=result.Settings;
+                    c.ActivityOutbox.RemoveAll(e=>result.AcceptedActivityIds.Contains(e.Id));result.Settings.NormalizeContacts();c.Dynamic=result.Settings;
                     c.Outbox.RemoveAll(e=>result.AcceptedEventIds.Contains(e.Id));
                     c.Prompts=LocalState.Merge(c.Prompts,result,c.Outbox);c.Reminders=result.Reminders;
                     c.LastSyncAtUtc=result.ServerTimeUtc;c.ClockOffsetMilliseconds=(serverTime-DateTimeOffset.UtcNow).TotalMilliseconds;

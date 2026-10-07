@@ -8,6 +8,7 @@ public sealed class ActivityRecord
     public string SessionId { get; set; }="";
     public string CharacterName { get; set; }="";
     public string HomeWorld { get; set; }="";
+    [Newtonsoft.Json.JsonConverter(typeof(ActivityDataConverter))]
     public Dictionary<string,object?> Data { get; set; }=[];
 }
 public sealed class DynamicSettings
@@ -15,8 +16,10 @@ public sealed class DynamicSettings
     public bool GarbleEnabled { get; set; }
     public int GarbleStrength { get; set; }=100;
     public string GarbleStyle { get; set; }="muffled";
+    [Newtonsoft.Json.JsonProperty(ObjectCreationHandling=Newtonsoft.Json.ObjectCreationHandling.Replace)]
     public List<string> Contacts { get; set; }=["I'm requesting attention.","I need help.","I am feeling sad.","I love you.","I want you.","I miss you.","Can we spend some time together?","Please check in with me."];
     public List<MessageTemplate> Templates { get; set; }=[];
+    internal void NormalizeContacts()=>Contacts=(Contacts??[]).Where(c=>!string.IsNullOrWhiteSpace(c)).Select(c=>c.Trim()).Distinct(StringComparer.Ordinal).ToList();
 }
 public sealed class MessageTemplate
 {

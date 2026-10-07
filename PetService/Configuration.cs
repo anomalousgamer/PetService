@@ -18,6 +18,8 @@ public sealed class Configuration : IPluginConfiguration
     public List<Prompt> Prompts { get; set; } = [];
     public List<Choice> Outbox { get; set; } = [];
     public string LastAcknowledgedVersion { get; set; }="";
+    public string LastLoadedVersion {get;set;}="";
+    public int ChatColourRevision {get;set;}
     public DynamicSettings Dynamic { get; set; }=new();
     public List<ActivityRecord> ActivityOutbox { get; set; }=[];
     public List<Choice> SafetyOutbox { get; set; } = [];

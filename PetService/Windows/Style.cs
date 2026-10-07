@@ -4,7 +4,7 @@ using Dalamud.Interface;
 namespace PetService.Windows;
 internal static class Style
 {
-    internal static readonly Vector4 Accent=new(.76f,.63f,.98f,1),Muted=new(.65f,.67f,.77f,1),Good=new(.48f,.86f,.69f,1);
+    internal static readonly Vector4 Accent=new(.76f,.63f,.98f,1),Muted=new(.74f,.76f,.85f,1),Good=new(.48f,.86f,.69f,1);
     internal static void Push()
     {
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding,new Vector2(22,20));
@@ -36,7 +36,28 @@ internal static class Style
     }
     internal static void Metric(string label,string value,string id)
     {
-        if(ImGui.BeginChild(id,new Vector2(0,82),true)){ImGui.TextColored(Muted,label);ImGui.SetWindowFontScale(1.25f);ImGui.TextUnformatted(value);ImGui.SetWindowFontScale(1);}ImGui.EndChild();
+        var padding=ImGui.GetStyle().WindowPadding;
+        var width=Math.Max(1,ImGui.GetContentRegionAvail().X-padding.X*2-8);
+        var height=Math.Max(92*Dalamud.Interface.Utility.ImGuiHelpers.GlobalScale,
+            padding.Y*2+ImGui.CalcTextSize(label,false,width).Y+ImGui.GetStyle().ItemSpacing.Y+ImGui.CalcTextSize(value,false,width/1.25f).Y*1.25f+8);
+        if(ImGui.BeginChild(id,new Vector2(0,height),true,ImGuiWindowFlags.NoScrollbar|ImGuiWindowFlags.NoScrollWithMouse)) {
+            ImGui.TextColored(Muted,label);ImGui.SetWindowFontScale(1.25f);ImGui.TextWrapped(value);ImGui.SetWindowFontScale(1);
+        }ImGui.EndChild();
+    }
+    internal static void StateGroup(string id,string title,bool fresh,IReadOnlyList<(string Label,string Value,bool Active)> rows,bool known=true)
+    {
+        ImGui.SetWindowFontScale(1.12f);
+        ImGui.TextColored(Accent,title);ImGui.Spacing();
+        if(ImGui.BeginTable(id,2,ImGuiTableFlags.SizingStretchProp|ImGuiTableFlags.RowBg|ImGuiTableFlags.BordersInnerH)) {
+            ImGui.TableSetupColumn("Status",ImGuiTableColumnFlags.WidthStretch,1.4f);
+            ImGui.TableSetupColumn("State",ImGuiTableColumnFlags.WidthStretch,1);
+            foreach(var row in rows) {
+                ImGui.TableNextRow();ImGui.TableNextColumn();ImGui.TextWrapped(row.Label);ImGui.TableNextColumn();
+                ImGui.PushStyleColor(ImGuiCol.Text,known&&fresh&&row.Active?Good:Muted);ImGui.TextWrapped(known?(fresh?"":"Last: ")+row.Value:"Unknown");ImGui.PopStyleColor();
+            }
+            ImGui.EndTable();
+        }
+        ImGui.SetWindowFontScale(1);
     }
     internal static void DailyChart(IReadOnlyList<Core.DailyTime> days)
     {

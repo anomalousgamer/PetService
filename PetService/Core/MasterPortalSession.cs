@@ -7,6 +7,11 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     private string password="";
     private CancellationTokenSource cancel=new();
     private Task<AdminDashboard>? dashboardTask;
+    private Task<SettingsSnapshot>? settingsTask;
+    private string settingsTaskPet="";
+    private long nextSettings,settingsRevision,settingsTaskRevision;
+    private bool settingsVisible;
+    internal long SettingsReadCount {get;private set;}
     private Task<HistoryPage>? historyTask;
     private bool appendHistory;
     internal List<ActivityRecord> History {get;private set;}=[];
@@ -57,6 +62,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     internal void Action(AdminAction value)
     {
         if(!Unlocked || Busy)return;
+        settingsRevision++;
         var copy=value with{Choices=value.Choices?.ToList()};
         activeAction=retryAction is not null && Fingerprint(retryAction)==Fingerprint(copy) ? retryAction : copy;
         retryAction=activeAction;Error="";Notice="";
@@ -65,6 +71,17 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     internal void Retry(){if(CanRetry)Action(retryAction!);}
     internal void Update()
     {
+        if(settingsTask is {IsCompleted:true}) {
+            var task=settingsTask;settingsTask=null;
+            try {
+                var result=task.GetAwaiter().GetResult();
+                if(settingsTaskRevision==settingsRevision && result.Pet==settingsTaskPet && Selected==settingsTaskPet && Dashboard?.Selected is { } pet && pet.Name==Selected) {
+                    if(!DateTimeOffset.TryParse(result.ServerTimeUtc,out var stamp))throw new AdminFailure("INVALID_RESPONSE");
+                    result.Settings.NormalizeContacts();pet.Settings=result.Settings;SettingsReadCount++;Error="";
+                    clockOffset=(stamp-DateTimeOffset.UtcNow).TotalMilliseconds;
+                }
+            } catch(Exception e){if(settingsTaskRevision==settingsRevision){Failure(e);nextSettings=Environment.TickCount64+15000;}}
+        }
         if(liveTask is {IsCompleted:true}) {
             var task=liveTask;liveTask=null;
             try {
@@ -96,6 +113,10 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
             var task=actionTask;actionTask=null;
             try {
                 CompletedResult=task.GetAwaiter().GetResult();CompletedAction=activeAction;retryAction=null;
+                if(activeAction?.Action=="saveSettings" && Dashboard?.Selected is { } savedPet && savedPet.Name==activeAction.Pet) {
+                    savedPet.Settings=DynamicSettingsEditor.Clone(CompletedResult.Settings ?? activeAction.Settings!);
+                    nextSettings=0;
+                }
                 Notice=activeAction?.Action switch{"sendChat"=>"Master chat message queued.","cancelChat"=>"Chat cancellation saved.","requestReport"=>"Fresh report requested. Waiting for the pet's plugin…","sendMessage"=>"Message queued.","createPet"=>"Pet profile created.","pair"=>"Pairing code generated.","revoke"=>"Device revoked.","addReminder"=>"Daily reminder added.","disableReminder"=>"Reminder disabled.","cancelPrompt"=>"Pending prompt cancelled.",_=>"Saved."};
                 if(activeAction?.Action=="requestReport"){requestedReportAt=CompletedResult.RequestedAtUtc;nextLive=0;}
                 if(activeAction?.Action=="createPet")Selected=CompletedResult.Pet;
@@ -116,16 +137,27 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
             requestedReportAt=null;Notice="Report request remains queued. The pet's plugin may be offline or paused.";
         }
     }
-    internal void TickVisible(bool overview,bool chats=false)
+    internal void TickVisible(bool overview,bool chats=false,bool settings=false)
     {
         var live=overview && AutoRefresh;
-        if(!live)Hide();
+        if(!live)StopLive();
+        if(settings && !settingsVisible)nextSettings=0;
+        settingsVisible=settings;
+        if(settings && Unlocked && Selected.Length>0 && !Busy && settingsTask is null && Environment.TickCount64>=nextSettings) {
+            settingsTaskPet=Selected;settingsTaskRevision=settingsRevision;nextSettings=Environment.TickCount64+5000;
+            settingsTask=client.Settings(password,Selected,cancel.Token);
+        }
         if(!Unlocked || Selected.Length==0 || liveTask is not null || Busy || (!live && !chats && requestedReportAt is null) || Environment.TickCount64<nextLive)return;
         liveTaskPet=Selected;liveTaskWatched=live;nextLive=Environment.TickCount64+5000;
         if(live)leasedPet=Selected;
         liveTask=client.Live(password,Selected,viewerId,live?"watch":chats?"chats":"read",cancel.Token);
     }
     internal void Hide()
+    {
+        settingsVisible=false;nextSettings=0;StopLive();
+    }
+    internal void RefreshSettings(){settingsRevision++;nextSettings=0;}
+    private void StopLive()
     {
         if(leasedPet.Length==0)return;
         var pet=leasedPet;leasedPet="";
@@ -151,6 +183,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
         ObserveFailure(historyTask);historyTask=null;History=[];HistoryCursor="";HistoryKind="";
         ObserveFailure(dashboardTask);ObserveFailure(actionTask);dashboardTask=null;actionTask=null;
         ObserveFailure(liveTask);liveTask=null;
+        ObserveFailure(settingsTask);settingsTask=null;settingsRevision++;settingsVisible=false;nextSettings=0;
         password="";Dashboard=null;Selected="";activeAction=null;retryAction=null;CompletedAction=null;CompletedResult=null;
         Error="";Notice="";clockOffset=0;
     }

@@ -1,6 +1,6 @@
 # Pet Service
 
-Author: **Anomaly** · **0.3.0.0** · Dalamud API **15** · InternalName **PetService**
+Author: **Anomaly** · **0.3.1.0** · Dalamud API **15** · InternalName **PetService**
 
 A private FFXIV companion for consensual pet/master roleplay and power dynamics.
 The master manages the dynamic through Discord, the website, or the in-game Master
@@ -57,7 +57,7 @@ until the master deletes the profile. No earlier history is manufactured.
 | Duties | Entered or joined in progress, actual start events, wipes, recommences, completion, departure or interruption. Unknown start/outcome remains unknown. |
 | Inventory | Supported own-character bags, equipment, armory, currency/crystals, saddlebags and loaded retainer containers; adds/removes/changes/moves/splits/merges with item ID, quantity and HQ. Initial container loads establish a baseline. |
 | Loot | Observed inventory increases. Their source is **unconfirmed**; this version does not identify loot rolls or prove a duty, trade or venture caused the increase. |
-| Trades | Trade offers' item IDs and window closure. Quantity, gil, partner identity and completed/cancelled outcome are not captured. Closing a trade window is **unconfirmed**, not completed. |
+| Trades | One readable record per observed trade: item names, offered quantities/HQ and separate gil offers for each side. Completion/cancellation/failure use fixed system-event IDs without reading message text. Window closure alone stays **unconfirmed**. Partner identity is excluded. Earlier records retain unknown quantities/gil. |
 | Retainers | Venture result screens with retainer NPC name, task, XP, item IDs and quantities. Viewing a result is **collection unconfirmed**. Container transfers are recorded as inventory changes without an assumed source. |
 | Pet Service | Explicit requests, replies, buttons, snoozes, display receipts and safety notices. |
 

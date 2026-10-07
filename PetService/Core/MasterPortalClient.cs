@@ -20,6 +20,8 @@ internal sealed class MasterPortalClient : IDisposable
         "/api/admin/dashboard"+(pet.Length==0 ? "" : "?pet="+Uri.EscapeDataString(pet)),password,null,cancel);
     internal Task<AdminActionResult> Action(string password,AdminAction action,CancellationToken cancel)=>Request<AdminActionResult>(
         "/api/admin/action",password,action,cancel);
+    internal Task<SettingsSnapshot> Settings(string password,string pet,CancellationToken cancel)=>Request<SettingsSnapshot>(
+        "/api/admin/settings?pet="+Uri.EscapeDataString(pet),password,null,cancel);
     internal Task<LiveReport> Live(string password,string pet,string viewerId,string action,CancellationToken cancel)=>Request<LiveReport>(
         "/api/admin/live",password,new {pet,viewerId,action},cancel);
     internal Task<HistoryPage> History(string password,string pet,string kind,string from,string to,string search,string cursor,CancellationToken cancel,string method="") {

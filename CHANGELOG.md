@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1.0
+
+- Master had some things to fix
+
 ## 0.3.0.0 — Across the threshold
 
 - A familiar call opens a door before a whisper leaves.

@@ -85,6 +85,13 @@ internal sealed class AdminActionResult
     public string? Code { get; set; }
     public string? ExpiresAtUtc { get; set; }
     public string? RequestedAtUtc { get; set; }
+    public DynamicSettings? Settings {get;set;}
+}
+internal sealed class SettingsSnapshot
+{
+    public string Pet {get;set;}="";
+    public string ServerTimeUtc {get;set;}="";
+    public DynamicSettings Settings {get;set;}=new();
 }
 internal sealed class ReportState
 {

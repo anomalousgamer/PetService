@@ -12,18 +12,20 @@ namespace PetService;
 internal sealed unsafe class ActivityRecorder : IDisposable
 {
     private readonly Plugin plugin;
+    private readonly TradeRecorder trades;
     private readonly List<ActivityRecord> pending=[];
     private readonly HashSet<uint> baselined=[];
     private Observation? previous;
     private bool eventPending;
     private DateTimeOffset? intervalStart;
     private long nextPoll,nextSave,baselineAfter;
-    private string runId="",dutyOutcome="unconfirmed",tradeState="",retainerState="";
+    private string runId="",dutyOutcome="unconfirmed",retainerState="";
     private uint dutyId;
     internal string Error {get;private set;}="";
     internal ActivityRecorder(Plugin plugin)
     {
         this.plugin=plugin;
+        trades=new(plugin,result=>Add("trade",result.Data,result.Context,result.At));
         Plugin.Duty.DutyStarted+=Started;Plugin.Duty.DutyCompleted+=Completed;
         Plugin.Duty.DutyWiped+=Wiped;Plugin.Duty.DutyRecommenced+=Recommenced;
         Plugin.Inventory.InventoryChanged+=InventoryChanged;
@@ -48,7 +50,8 @@ internal sealed unsafe class ActivityRecorder : IDisposable
     }
     internal void Update(Func<Observation> observe)
     {
-        if(!Active){if(plugin.Configuration.ActivityOutbox.Count+pending.Count>=50000)Error="Local activity queue is full. Recording pauses until saved observations are accepted.";previous=null;intervalStart=null;baselined.Clear();runId="";dutyId=0;tradeState="";retainerState="";return;}
+        if(!Active){trades.Reset();if(plugin.Configuration.ActivityOutbox.Count+pending.Count>=50000)Error="Local activity queue is full. Recording pauses until saved observations are accepted.";previous=null;intervalStart=null;baselined.Clear();runId="";dutyId=0;retainerState="";return;}
+        trades.Update(observe);
         var tick=Environment.TickCount64;if(tick<nextPoll)return;nextPoll=tick+1000;
         var o=observe();var stamp=DateTimeOffset.UtcNow;
         if(previous is null || previous.SessionId!=o.SessionId) {
@@ -126,17 +129,6 @@ internal sealed unsafe class ActivityRecorder : IDisposable
     {
         // Read only mapped agent fields. Do not read player-name/roster/chat fields.
         try {
-            var trade=AgentTrade.Instance();var active=trade!=null && trade->IsAgentActive();
-            if(active) {
-                var give=trade->ItemsGive.ToArray().Where(i=>i.Id>0).Select(i=>i.Id).ToArray();
-                var receive=trade->ItemsReviece.ToArray().Where(i=>i.Id>0).Select(i=>i.Id).ToArray();
-                var key=string.Join(',',give)+"|"+string.Join(',',receive);
-                if(key!=tradeState) {
-                    tradeState=key;
-                    Add("trade",new(){["phase"]="give-offer-observed",["outcome"]="quantity/gil/completion unconfirmed",["items"]=give.Select(id=>new {itemId=id%1000000,quantity=(uint?)null,hq=id>=1000000}).ToArray()});
-                    Add("trade",new(){["phase"]="receive-offer-observed",["outcome"]="quantity/gil/completion unconfirmed",["items"]=receive.Select(id=>new {itemId=id%1000000,quantity=(uint?)null,hq=id>=1000000}).ToArray()});
-                }
-            } else if(tradeState.Length>0){Add("trade",new(){["phase"]="window-closed",["outcome"]="unconfirmed"});tradeState="";}
             var retainer=AgentRetainerTask.Instance();
             if(retainer!=null && retainer->IsAgentActive() && retainer->DisplayType==3 && !retainer->IsLoading) {
                 var result=retainer->RetainerData;
@@ -153,13 +145,14 @@ internal sealed unsafe class ActivityRecorder : IDisposable
     }
     internal void Stop(string reason)
     {
+        trades.Stop(reason);
         if(previous?.LoggedIn==true && Active){FlushInterval(DateTimeOffset.UtcNow);if(runId.Length>0)DutyRecord("interrupted","unknown");Add("session",new(){["source"]="end",["reason"]=reason});}
         Save();previous=null;intervalStart=null;baselined.Clear();runId="";dutyId=0;
     }
     internal void ClearPairingState()
     {
         pending.Clear();previous=null;intervalStart=null;baselined.Clear();runId="";dutyId=0;
-        tradeState="";retainerState="";Error="";nextPoll=0;eventPending=false;
+        trades.Reset();retainerState="";Error="";nextPoll=0;eventPending=false;
     }
     internal bool FlushForReport(){Save();return pending.Count==0;}
     internal void Travel(Dictionary<string,object?> data,Observation context){Add("travel",data,context);Save();if(pending.Count==0)plugin.RequestObservationUpload();}
@@ -171,7 +164,7 @@ internal sealed unsafe class ActivityRecorder : IDisposable
     }
     public void Dispose()
     {
-        Stop("plugin unloaded");Plugin.Duty.DutyStarted-=Started;Plugin.Duty.DutyCompleted-=Completed;
+        Stop("plugin unloaded");trades.Dispose();Plugin.Duty.DutyStarted-=Started;Plugin.Duty.DutyCompleted-=Completed;
         Plugin.Duty.DutyWiped-=Wiped;Plugin.Duty.DutyRecommenced-=Recommenced;Plugin.Inventory.InventoryChanged-=InventoryChanged;
     }
 }

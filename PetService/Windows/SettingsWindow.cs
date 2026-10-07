@@ -27,7 +27,7 @@ internal sealed class SettingsWindow : Window,IDisposable
     private void DrawContent()
     {
         EditingText=false;
-        Style.Title("PET SERVICE","Pet and Master controls · 0.3.0.0");
+        Style.Title("PET SERVICE","Pet and Master controls · 0.3.1.0");
         ImGui.BeginChild("PetServiceMain",new Vector2(0,-85),false);
         var masterShown=false;
         if(ImGui.BeginTabBar("roles")) {
@@ -91,7 +91,7 @@ internal sealed class SettingsWindow : Window,IDisposable
             foreach(var kind in new[]{"echo","system"})if(ImGui.Selectable(kind=="echo"?"Echo":"System messages",plugin.Configuration.MasterChatType==kind))plugin.Mutate(c=>c.MasterChatType=kind);
             ImGui.EndCombo();
         }
-        var colours=new (string Label,ushort Id)[]{("Default",0),("Gold",45),("Green",504),("Blue",37),("Pink",541)};
+        var colours=new (string Label,ushort Id)[]{("Default",0),("Gold",540),("Green",504),("Blue",37),("Pink",561)};
         if(ImGui.BeginCombo("Message colour",colours.FirstOrDefault(c=>c.Id==plugin.Configuration.MasterChatColour).Label??"Default")) {
             foreach(var colour in colours)if(ImGui.Selectable(colour.Label,colour.Id==plugin.Configuration.MasterChatColour))plugin.Mutate(c=>c.MasterChatColour=colour.Id);
             ImGui.EndCombo();

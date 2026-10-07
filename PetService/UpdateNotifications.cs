@@ -6,7 +6,7 @@ using Dalamud.Plugin;
 
 namespace PetService;
 
-internal sealed class UpdateNotifications
+internal sealed class UpdateNotifications(Plugin plugin,bool hadConfiguration)
 {
     private static readonly TimeSpan LoginDelay = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(12);
@@ -16,6 +16,7 @@ internal sealed class UpdateNotifications
     private DateTime nextCheckAtUtc;
     private Task<PluginUpdate?>? pendingCheck;
     private bool manualCheckRequested;
+    private bool installedVersionRecorded;
 
     internal void Update()
     {
@@ -33,6 +34,7 @@ internal sealed class UpdateNotifications
 
         var now = DateTime.UtcNow;
         loginEligibleAtUtc ??= now + LoginDelay;
+        if(now>=loginEligibleAtUtc.Value && Plugin.PluginInterface.IsAutoUpdateComplete)AnnounceInstalledVersion();
         if (now < loginEligibleAtUtc.Value || now < nextCheckAtUtc
             || pendingCheck is not null || !Plugin.PluginInterface.IsAutoUpdateComplete)
         {
@@ -40,6 +42,20 @@ internal sealed class UpdateNotifications
         }
 
         StartCheck(now);
+    }
+
+    private void AnnounceInstalledVersion()
+    {
+        if(installedVersionRecorded)return;
+        var version=typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "0.3.1.0";
+        var previous=plugin.Configuration.LastLoadedVersion;
+        if(previous==version){installedVersionRecorded=true;return;}
+        if(!plugin.Mutate(c=>c.LastLoadedVersion=version))return;
+        installedVersionRecorded=true;
+        if(!hadConfiguration && previous.Length==0)return;
+        var message=$"Pet Service is now running version {version}.";
+        Plugin.Notifications.AddNotification(new Notification{Title="Pet Service updated",Content=message,Type=NotificationType.Info});
+        Plugin.Chat.Print(message,"Pet Service");
     }
 
     internal void CheckNow()
