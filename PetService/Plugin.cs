@@ -329,7 +329,7 @@ public sealed class Plugin : IDalamudPlugin
             recorder.Update(Observe);travel.Update(Observe);updates.Update();
             if(Ready && !changesShown) {
                 if(changesEligible==0)changesEligible=Environment.TickCount64+3000;
-                if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.4.0.0")changes.IsOpen=true;}
+                if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.4.0.1")changes.IsOpen=true;}
             } else if(!Ready)changesEligible=0;
             // Only explicit safety notices use this route. It carries no observation
             // and remains usable while the kill switch pauses normal synchronization.
@@ -434,7 +434,7 @@ public sealed class Plugin : IDalamudPlugin
                 if(!masterInput.Accepts(syncRevision) || syncCharacterRevision!=characterRevision)return;
                 observationUpload.Reset();
                 if(e.Revoked){Mutate(c=>{c.Revoked=true;c.RevocationConfirmed=true;});integrations.Release();input.Release();ServiceStatus="Device authorization was revoked. Request a new pairing code.";}
-                else {if(e.Message=="STALE_DEVICE_STATE")VerifyConnection();ServiceStatus="Service unavailable. Cached reminders and saved choices remain local.";syncRetryUntil=nextSync=Environment.TickCount64+15000;activityUploadRequested=true;}
+                else {if(e.Message=="STALE_DEVICE_STATE")VerifyConnection();ServiceStatus=$"Synchronization failed ({e.ConnectionDetail}). Cached reminders and saved choices remain local.";Log.Warning("Pet Service synchronization failed: {Detail}",e.ConnectionDetail);syncRetryUntil=nextSync=Environment.TickCount64+15000;activityUploadRequested=true;}
             } catch {
                 if(!masterInput.Accepts(syncRevision) || syncCharacterRevision!=characterRevision)return;
                 observationUpload.Reset();

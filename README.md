@@ -1,6 +1,6 @@
 # Pet Service
 
-Author: **Anomaly** · Version **0.4.0.0**
+Author: **Anomaly** · Version **0.4.0.1**
 
 A private Pet/Master connection for FINAL FANTASY XIV. Open **/toh** or **/petservice** for the Pet and password-protected Master pages. The companion website is a separate package. The service connection is included in the plugin; pairing needs only the Master's one-time code.
 

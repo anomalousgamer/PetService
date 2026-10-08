@@ -5,9 +5,11 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace PetService.Core;
-public sealed class ServiceFailure(string code, bool revoked = false) : Exception(code)
+public sealed class ServiceFailure(string code, bool revoked = false, HttpStatusCode? statusCode = null) : Exception(code)
 {
     public bool Revoked { get; } = revoked;
+    public HttpStatusCode? StatusCode { get; } = statusCode;
+    public string ConnectionDetail => StatusCode is { } status ? $"HTTP {(int)status}: {Message}" : Message;
 }
 public sealed class ServiceClient : IDisposable
 {
@@ -44,7 +46,7 @@ public sealed class ServiceClient : IDisposable
                 while(errorBody.Length<=8192){var count=await errorStream.ReadAsync(errorChunk.AsMemory(0,(int)Math.Min(errorChunk.Length,8193-errorBody.Length)),cancel).ConfigureAwait(false);if(count==0)break;errorBody.Write(errorChunk,0,count);}
                 if(errorBody.Length<=8192)try{using var doc=JsonDocument.Parse(errorBody.ToArray());var value=doc.RootElement.GetProperty("code").GetString();if(value is not null && value.Length<=80 && value.All(c=>char.IsAsciiLetterUpper(c)||c=='_'))code=value;}catch{}
             }
-            throw new ServiceFailure(code,token is not null && response.StatusCode==HttpStatusCode.Unauthorized && code is "DEVICE_NOT_AUTHORIZED" or "DEVICE_REVOKED" or "DEVICE_REPLACED" or "PET_ARCHIVED");
+            throw new ServiceFailure(code,token is not null && response.StatusCode==HttpStatusCode.Unauthorized && code is "DEVICE_NOT_AUTHORIZED" or "DEVICE_REVOKED" or "DEVICE_REPLACED" or "PET_ARCHIVED",response.StatusCode);
         }
         if (response.Content.Headers.ContentLength is > 4194304) throw new ServiceFailure("Service response is too large.");
         await using var stream=await response.Content.ReadAsStreamAsync(cancel).ConfigureAwait(false);

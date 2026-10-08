@@ -29,7 +29,7 @@ internal sealed class SettingsWindow : Window,IDisposable
     private void DrawContent()
     {
         EditingText=false;
-        Style.Title("PET SERVICE","Pet and Master controls · 0.4.0.0");
+        Style.Title("PET SERVICE","Pet and Master controls · 0.4.0.1");
         ImGui.BeginChild("PetServiceMain",new Vector2(0,-85),false);
         var masterShown=false;
         if(ImGui.BeginTabBar("roles")) {

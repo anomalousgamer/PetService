@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0.1 — A clearer knock
+
+- Diagnostics
+
 ## 0.4.0.0 — A key of your own
 
 - A new face may greet you at the threshold.
