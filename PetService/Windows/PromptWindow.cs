@@ -43,12 +43,12 @@ internal sealed class PromptWindow : Window
         var prompt=plugin.CurrentPrompt;
         if(!wasVisible || prompt?.Id!=lastPromptId) {
             appearedAt=Environment.TickCount64;reply="";snoozeMinutes=SnoozePolicy.DefaultMinutes;
-            lastPromptId=prompt?.Id;editingPrompt=false;
+            lastPromptId=prompt?.Id;editingPrompt=false;drawFailed=false;
             // Keep existing game-chat focus. A prompt appearing must not take it.
         }
         wasVisible=true;
         var scale=ImGuiHelpers.GlobalScale;
-        var size=Vector2.Min(new Vector2(580,(prompt?.Kind=="reminder" ? 360 : 540))*scale,
+        var size=Vector2.Min(new Vector2(580,540)*scale,
             Vector2.Max(new Vector2(1),viewport.Size-new Vector2(32)*scale));
         var position=viewport.Pos+(viewport.Size-size)/2f;
         if(chat.Available && Overlap(position-viewport.Pos,size,chat.InputArea)>0) {
@@ -77,7 +77,7 @@ internal sealed class PromptWindow : Window
     }
     public override void Draw()
     {
-        try {DrawPrompt();}
+        try {DrawPrompt();drawFailed=false;}
         catch {drawFailed=true;plugin.ReleaseInput();throw;}
     }
     private void DrawPrompt()
@@ -87,7 +87,7 @@ internal sealed class PromptWindow : Window
         var scale=ImGuiHelpers.GlobalScale;
         plugin.MarkDisplayed();
         ImGui.SetWindowFontScale(1.2f);
-        ImGui.TextUnformatted(prompt.Kind=="reminder" ? "Daily medication reminder" : "Message from Master");
+        ImGui.TextUnformatted(prompt.Kind=="reminder" ? "Daily reminder" : "Message from "+plugin.MasterName);
         ImGui.SetWindowFontScale(1f);ImGui.Separator();
         var armed=Environment.TickCount64-appearedAt>=500;
         editingPrompt=false;
@@ -119,18 +119,21 @@ internal sealed class PromptWindow : Window
                         ImGui.EndDisabled();
                     }
                 }
-                ImGui.Spacing();ImGui.SetNextItemWidth(125*scale);
-                ImGui.InputInt("Snooze minutes",ref snoozeMinutes,1,5);
-                editingPrompt|=ImGui.IsItemActive();
-                var valid=SnoozePolicy.IsValid(snoozeMinutes);
-                if(!valid)ImGui.TextUnformatted("Choose 1 to 1,440 minutes.");
-                ImGui.BeginDisabled(!armed || !valid);
-                if(ImGui.Button($"Snooze {snoozeMinutes} minutes",new Vector2(-1,32*scale)))plugin.Choose("snooze",minutes:snoozeMinutes);
-                ImGui.EndDisabled();
-                if(prompt.Kind=="reminder") {
-                    ImGui.BeginDisabled(!armed);
-                    if(ImGui.Button("I took them",new Vector2(-1,32*scale)))plugin.Choose("taken");
-                    ImGui.EndDisabled();
+                if(prompt.Kind=="reminder" && prompt.Responses is { } configured) {
+                    foreach(var option in configured.Options) {
+                        ImGui.PushID(option.Id);
+                        if(option.Action=="snooze" && option.Minutes is not >0) {ImGui.SliderInt("Minutes",ref snoozeMinutes,1,10);snoozeMinutes=Math.Clamp(snoozeMinutes,1,10);}
+                        ImGui.BeginDisabled(!armed);
+                        if(Style.LiteralButton(option.Label,"dailyoption",new Vector2(-1,34*scale))) {
+                            if(option.Action is "snooze" or "random-snooze")plugin.Choose("snooze",minutes:option.Action=="random-snooze"?System.Security.Cryptography.RandomNumberGenerator.GetInt32(1,11):option.Minutes is >0?option.Minutes.Value:snoozeMinutes,optionId:option.Id,snoozeMode:option.Action);
+                            else plugin.Choose("response",optionId:option.Id);
+                        }
+                        ImGui.EndDisabled();ImGui.PopID();
+                    }
+                    if(configured.AllowReply){ImGui.InputTextMultiline("##DailyReply",ref reply,1000,new Vector2(-1,70*scale));editingPrompt=ImGui.IsItemActive();ImGui.BeginDisabled(!armed||string.IsNullOrWhiteSpace(reply));if(ImGui.Button("Send reply",new Vector2(-1,32*scale)))plugin.Choose("reply",reply);ImGui.EndDisabled();}
+                } else if(prompt.Kind=="message") {
+                    ImGui.Spacing();ImGui.SetNextItemWidth(125*scale);ImGui.InputInt("Snooze minutes",ref snoozeMinutes,1,5);editingPrompt|=ImGui.IsItemActive();
+                    ImGui.BeginDisabled(!armed || !SnoozePolicy.IsValid(snoozeMinutes));if(ImGui.Button($"Snooze {snoozeMinutes} minutes",new Vector2(-1,32*scale)))plugin.Choose("snooze",minutes:snoozeMinutes);ImGui.EndDisabled();
                 }
             } finally {ImGui.SetWindowFontScale(1f);ImGui.EndChild();}
         } else ImGui.EndChild();
@@ -138,8 +141,8 @@ internal sealed class PromptWindow : Window
         if(ImGui.Button("Use game chat",new Vector2(-1,28*scale))) {
             ImGuiP.ClearActiveID();editingPrompt=false;plugin.FocusGameChat();
         }
-        if(ImGui.Button("Contact master",new Vector2(-1,28*scale)))plugin.OpenContact();
-        if(ImGui.Button("Kill switch — stop master input",new Vector2(-1,28*scale)))plugin.SetEnabled(false);
+        if(Style.LiteralButton("Contact "+plugin.MasterName,"promptcontact",new Vector2(-1,28*scale)))plugin.OpenContact();
+        if(Style.LiteralButton("Kill switch — stop "+plugin.MasterName+" input","promptkill",new Vector2(-1,28*scale)))plugin.SetEnabled(false);
         if(!string.IsNullOrEmpty(plugin.SaveError))ImGui.TextWrapped(plugin.SaveError);
         if(plugin.HasVisibleReminder)plugin.CaptureInput(editingPrompt,mouseOverChat);
     }

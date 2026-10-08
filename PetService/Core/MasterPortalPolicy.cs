@@ -17,6 +17,7 @@ internal static class MasterPortalPolicy
     internal static bool Fresh(AdminProfile pet,DateTimeOffset now)=>pet.Status.Reported is not null
         && DateTimeOffset.TryParse(pet.Status.LastSeenAtUtc,out var seen) && (now-seen).TotalSeconds<=45;
     internal static string State(AdminProfile pet,DateTimeOffset now)=>!pet.Paired ? "Not paired"
-        : pet.Status.Reported is null ? "Awaiting first connection" : !Fresh(pet,now) ? "No recent contact"
+        : pet.Status.State=="unapproved"?"Unapproved alt · paused":pet.Status.State=="paused"?"Kill switch · paused":pet.Status.State=="waiting"?"Waiting for character":pet.Status.State=="logged-out"?"Logged out"
+        : DateTimeOffset.TryParse(pet.Status.LastSeenAtUtc,out var contact) && (now-contact).TotalSeconds>45?"No recent contact":pet.Status.Reported is null ? "Awaiting first connection" : !Fresh(pet,now) ? "No recent contact"
         : pet.Status.Reported.LoggedIn ? "Logged in" : "Logged out";
 }

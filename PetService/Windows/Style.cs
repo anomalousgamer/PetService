@@ -4,7 +4,8 @@ using Dalamud.Interface;
 namespace PetService.Windows;
 internal static class Style
 {
-    internal static readonly Vector4 Accent=new(.76f,.63f,.98f,1),Muted=new(.74f,.76f,.85f,1),Good=new(.48f,.86f,.69f,1);
+    internal static Vector4 Accent=new(.76f,.63f,.98f,1),Muted=new(.74f,.76f,.85f,1),Good=new(.48f,.86f,.69f,1);
+    internal static void ApplyTheme(string value){if(value.Length==7&&uint.TryParse(value.AsSpan(1),System.Globalization.NumberStyles.HexNumber,null,out var n))Accent=new(((n>>16)&255)/255f,((n>>8)&255)/255f,(n&255)/255f,1);}
     internal static void Push()
     {
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding,new Vector2(22,20));
@@ -25,6 +26,7 @@ internal static class Style
     {
         ImGui.TextColored(Accent,text);ImGui.TextColored(Muted,sub);ImGui.Spacing();
     }
+    internal static bool LiteralButton(string text,string id,Vector2 size){var start=ImGui.GetCursorScreenPos();var width=size.X<0?ImGui.GetContentRegionAvail().X:size.X;var height=Math.Max(size.Y,ImGui.CalcTextSize(text,false,width-16).Y+16);var clicked=ImGui.Button("##"+id,new Vector2(width,height));ImGui.GetWindowDrawList().AddText(ImGui.GetFont(),ImGui.GetFontSize(),start+new Vector2(8,8),ImGui.GetColorU32(ImGuiCol.Text),text,width-16);return clicked;}
     internal static bool IconButton(FontAwesomeIcon icon,string text,Vector2 size)
     {
         var width=size.X<0?ImGui.GetContentRegionAvail().X:size.X;

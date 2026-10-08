@@ -19,6 +19,8 @@ internal sealed unsafe class ActivityRecorder : IDisposable
     private bool eventPending;
     private DateTimeOffset? intervalStart;
     private long nextPoll,nextSave,baselineAfter;
+    private DateTimeOffset lastObserved;
+    private bool endingObservedSession;
     private string runId="",dutyOutcome="unconfirmed",retainerState="";
     private uint dutyId;
     internal string Error {get;private set;}="";
@@ -30,11 +32,11 @@ internal sealed unsafe class ActivityRecorder : IDisposable
         Plugin.Duty.DutyWiped+=Wiped;Plugin.Duty.DutyRecommenced+=Recommenced;
         Plugin.Inventory.InventoryChanged+=InventoryChanged;
     }
-    private bool Active=>plugin.IsPaired && !plugin.KillSwitchOn && plugin.Configuration.ActivityOutbox.Count+pending.Count<50000;
+    private bool Active=>plugin.SharingAllowed && plugin.Configuration.ActivityOutbox.Count+pending.Count<50000;
     private void Add(string kind,Dictionary<string,object?> data,Observation? context=null,DateTimeOffset? time=null)
     {
-        var o=context??previous;if(!Active || o is null || o.SessionId.Length==0)return;
-        pending.Add(new(){Kind=kind,AtUtc=LocalState.Stamp(time??DateTimeOffset.UtcNow),SessionId=o.SessionId,CharacterName=o.CharacterName,HomeWorld=o.HomeWorld,
+        var o=context??previous;if(!(Active || endingObservedSession) || o is null || o.SessionId.Length==0)return;
+        pending.Add(new(){Kind=kind,AtUtc=LocalState.Stamp(time??DateTimeOffset.UtcNow),SessionId=o.SessionId,CharacterId=o.LocalCharacterId,CharacterName=o.CharacterName,HomeWorld=o.HomeWorld,
             Data=data.Where(p=>p.Value is not null).ToDictionary(p=>p.Key,p=>p.Value)});
         if(kind is not "interval" and not "position")eventPending=true;
     }
@@ -50,9 +52,13 @@ internal sealed unsafe class ActivityRecorder : IDisposable
     }
     internal void Update(Func<Observation> observe)
     {
+        var tick=Environment.TickCount64;
+        // Retry already observed records even when the queue limit or a pause
+        // prevents collecting new ones. A repaired disk must not strand them.
+        if(pending.Count>0 && tick>=nextSave){nextSave=tick+15000;Save();}
         if(!Active){trades.Reset();if(plugin.Configuration.ActivityOutbox.Count+pending.Count>=50000)Error="Local activity queue is full. Recording pauses until saved observations are accepted.";previous=null;intervalStart=null;baselined.Clear();runId="";dutyId=0;retainerState="";return;}
         trades.Update(observe);
-        var tick=Environment.TickCount64;if(tick<nextPoll)return;nextPoll=tick+1000;
+        if(tick<nextPoll)return;nextPoll=tick+1000;
         var o=observe();var stamp=DateTimeOffset.UtcNow;
         if(previous is null || previous.SessionId!=o.SessionId) {
             FlushInterval(stamp);
@@ -80,7 +86,7 @@ internal sealed unsafe class ActivityRecorder : IDisposable
             if(tick>=baselineAfter)BaselineContainers();
             ObserveNative();
         }
-        previous=o;
+        previous=o;lastObserved=stamp;
         if(eventPending || tick>=nextSave){nextSave=tick+15000;Save();}
         if(eventPending && pending.Count==0){eventPending=false;plugin.RequestObservationUpload();}
         if(plugin.Configuration.ActivityOutbox.Count+pending.Count>=50000)Error="Local activity queue is full. Recording pauses until the service accepts saved observations.";
@@ -112,7 +118,7 @@ internal sealed unsafe class ActivityRecorder : IDisposable
         }
     }
     private void InventoryChanged(IReadOnlyCollection<InventoryEventArgs> events)
-    {foreach(var e in events)InventoryItem(e.Type,e);}
+    {plugin.MarkInventoryDirty();foreach(var e in events)InventoryItem(e.Type,e);}
     private void InventoryItem(GameInventoryEvent type,InventoryEventArgs args)
     {
         if(!Active || !plugin.Ready || previous is null || Environment.TickCount64<baselineAfter)return;
@@ -132,11 +138,11 @@ internal sealed unsafe class ActivityRecorder : IDisposable
             var retainer=AgentRetainerTask.Instance();
             if(retainer!=null && retainer->IsAgentActive() && retainer->DisplayType==3 && !retainer->IsLoading) {
                 var result=retainer->RetainerData;
-                var key=$"{result.RewardRetainerTaskId}:{result.RewardXP}:{string.Join(',',result.RewardItemIds.ToArray())}:{string.Join(',',result.RewardItemCount.ToArray())}";
+                var manager=RetainerManager.Instance();var activeRetainer=manager==null?null:manager->GetActiveRetainer();
+                var key=$"{(manager==null?0:manager->LastSelectedRetainerId)}:{result.RewardRetainerTaskId}:{result.RewardXP}:{string.Join(',',result.RewardItemIds.ToArray())}:{string.Join(',',result.RewardItemCount.ToArray())}";
                 if(key!=retainerState) {
                     retainerState=key;
                     var items=new List<object>();for(var i=0;i<2;i++)if(result.RewardItemIds[i]>0)items.Add(new {itemId=result.RewardItemIds[i]%1000000,quantity=result.RewardItemCount[i],hq=result.RewardItemIds[i]>=1000000});
-                    var manager=RetainerManager.Instance();var activeRetainer=manager==null?null:manager->GetActiveRetainer();
                     var retainerName=activeRetainer==null?"":activeRetainer->NameString;
                     Add("retainer",new(){["name"]=retainerName,["phase"]="result-presented; collection unconfirmed",["taskId"]=result.RewardRetainerTaskId,["xp"]=result.RewardXP,["items"]=items});
                 }
@@ -145,8 +151,11 @@ internal sealed unsafe class ActivityRecorder : IDisposable
     }
     internal void Stop(string reason)
     {
-        trades.Stop(reason);
-        if(previous?.LoggedIn==true && Active){FlushInterval(DateTimeOffset.UtcNow);if(runId.Length>0)DutyRecord("interrupted","unknown");Add("session",new(){["source"]="end",["reason"]=reason});}
+        endingObservedSession=previous?.LoggedIn==true && previous.LocalCharacterId.Length>0 && plugin.Configuration.QueuesPetId==plugin.Configuration.PetId;
+        try {
+            trades.Stop(reason);
+            if(endingObservedSession){var at=Active?DateTimeOffset.UtcNow:lastObserved;FlushInterval(at);if(runId.Length>0)DutyRecord("interrupted","unknown");Add("session",new(){["source"]="end",["reason"]=reason},previous,at);}
+        } finally {endingObservedSession=false;}
         Save();previous=null;intervalStart=null;baselined.Clear();runId="";dutyId=0;
     }
     internal void ClearPairingState()

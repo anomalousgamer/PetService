@@ -27,26 +27,27 @@ public static class LocalState
     public static bool Refresh(List<Schedule> schedules, List<Prompt> prompts, DateTimeOffset now)
     {
         var changed = false;
-        foreach (var r in schedules.Where(r => r.Enabled))
+        foreach (var r in schedules.Where(r => r.Enabled && r.Responses?.Usable==true))
         {
             var day = Day(now, r.TimeZone);
             var due = DueAt(day, r.Time, r.TimeZone);
             var id = $"r:{r.Id}:{day}";
             if (Parse(due) > now || prompts.Any(p => p.Id == id)) continue;
-            prompts.Add(new Prompt { Id=id, Kind="reminder", ReminderId=r.Id, LocalDay=day, Label=r.Label, DueAtUtc=due });
+            prompts.Add(new Prompt { Id=id, Kind="reminder", ReminderId=r.Id, LocalDay=day, Label=r.Label, DueAtUtc=due, Responses=JsonClone(r.Responses!),AllowReply=r.Responses!.AllowReply });
             changed = true;
         }
         return changed;
     }
     public static Prompt? Pending(List<Prompt> prompts, DateTimeOffset now) => prompts
-        .Where(p => p.ResolvedAtUtc is null && Parse(p.DueAtUtc) <= now && (p.SnoozedUntilUtc is null || Parse(p.SnoozedUntilUtc) <= now))
+        .Where(p => (p.Kind!="reminder" || p.Responses?.Usable==true) && p.ResolvedAtUtc is null && Parse(p.DueAtUtc) <= now && (p.SnoozedUntilUtc is null || Parse(p.SnoozedUntilUtc) <= now))
         .OrderBy(p => p.DueAtUtc, StringComparer.Ordinal).ThenBy(p => p.Id, StringComparer.Ordinal).FirstOrDefault();
+    private static ResponseOptions JsonClone(ResponseOptions value)=>System.Text.Json.JsonSerializer.Deserialize<ResponseOptions>(System.Text.Json.JsonSerializer.Serialize(value,ServiceClient.Json),ServiceClient.Json)!;
     public static void Apply(Prompt prompt, Choice choice)
     {
         if (choice.Action == "displayed") prompt.DisplayedAtUtc ??= choice.ClientAtUtc;
         else if (choice.Action == "snooze" && prompt.ResolvedAtUtc is null && SnoozePolicy.IsValid(choice.Minutes))
             prompt.SnoozedUntilUtc = Stamp(Parse(choice.ClientAtUtc).AddMinutes(choice.Minutes!.Value));
-        else if (choice.Action is "taken" or "acknowledge" || (choice.Action=="reply" && prompt.AllowReply)
+        else if (choice.Action=="response" && prompt.Responses?.Options.Any(o=>o.Id==choice.OptionId && o.Resolves)==true || choice.Action is "taken" or "acknowledge" || (choice.Action=="reply" && prompt.AllowReply && (prompt.Responses?.ReplyResolves??true))
             || (choice.Action=="choice" && ReplyChoicePolicy.Allows(prompt,choice.OptionIndex)))
         { prompt.ResolvedAtUtc=choice.ClientAtUtc; prompt.Resolution=choice.Action; prompt.SnoozedUntilUtc=null; }
     }

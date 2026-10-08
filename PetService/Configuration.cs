@@ -4,6 +4,18 @@ namespace PetService;
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
+    public List<CharacterAccess> Characters {get;set;}=[];
+    public Dictionary<string,string> ManagedTitles {get;set;}=[];
+    public Dictionary<string,string> PreviousTitles {get;set;}=[];
+    public Dictionary<string,List<Guid>> ManagedMoodles {get;set;}=[];
+    public List<IntegrationLease> IntegrationLeases {get;set;}=[];
+    public List<string> IntegrationCleanupCharacters {get;set;}=[];
+    public bool CharacterAccessMigrated {get;set;}
+    public FeatureState Features {get;set;}=new();
+    public List<FeatureResult> FeatureResults {get;set;}=[];
+    public List<TaskEvent> TaskEvents {get;set;}=[];
+    public List<RecoveryRecord> Recovery {get;set;}=[];
+    public string QueuesPetId {get;set;}="";
     public int Version { get; set; } = 1;
     // Binds the saved credential to its issuing service. Requests use the bundled URL.
     public string ServiceUrl { get; set; } = "";
@@ -11,7 +23,9 @@ public sealed class Configuration : IPluginConfiguration
     public string PetId { get; set; } = "";
     public string PetName { get; set; } = "";
     public bool Enabled { get; set; } = true;
+    public long AccessRevision {get;set;}
     public bool Revoked { get; set; }
+    public bool RevocationConfirmed {get;set;}
     public double ClockOffsetMilliseconds { get; set; }
     public string? LastSyncAtUtc { get; set; }
     public List<Schedule> Reminders { get; set; } = [];

@@ -20,14 +20,14 @@ internal static class ActivityLabels
         "job"=>"Job","level"=>"Level","crafting"=>"Crafting","gathering"=>"Gathering",
         "mounted"=>"Mounted","cutscene"=>"In a cutscene","unconscious"=>"Unconscious",
         "hq"=>"High quality","itemId"=>"Item ID","dutyId"=>"Duty ID","runId"=>"Duty run",
-        "taskId"=>"Venture ID","xp"=>"Experience",_=>Humanize(field)
+        "taskId"=>"Venture ID","xp"=>"Experience",_=>Humanize(field.EndsWith("Utc",StringComparison.Ordinal)?field[..^3]:field)
     };
     internal static string TravelMethod(string method)=>method switch{""=>"All methods","teleport"=>"Teleport","return"=>"Return","aethernet"=>"Aethernet / aetheryte transfer","area-transfer"=>"Same-area transfer (method unknown)","zone-transition"=>"Zone transition (method unknown)",_=>method};
     private static string Humanize(string field)
     {var text=Regex.Replace(field,"([a-z])([A-Z])","$1 $2");return text.Length>0?char.ToUpperInvariant(text[0])+text[1..]:text;}
-    internal static string Value(object? value)=>value switch {
+    internal static string Value(object? value)=>LocalClock.DisplayValue(value switch {
         true=>"Yes",false=>"No",null=>"Unknown",
         JsonElement e=>e.ValueKind switch{JsonValueKind.True=>"Yes",JsonValueKind.False=>"No",JsonValueKind.Null=>"Unknown",_=>e.ToString()},
         _=>value.ToString()??"Unknown"
-    };
+    });
 }

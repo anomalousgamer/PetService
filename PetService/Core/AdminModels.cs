@@ -2,6 +2,7 @@ namespace PetService.Core;
 
 internal sealed class AdminDashboard
 {
+    public MasterIdentity Identity {get;set;}=new();
     public string ServerTimeUtc { get; set; }="";
     public List<AdminProfile> Profiles { get; set; }=[];
     public AdminPet? Selected { get; set; }
@@ -19,6 +20,7 @@ internal class AdminProfile
 }
 internal sealed class AdminPet : AdminProfile
 {
+    public FeatureState Features {get;set;}=new();
     public List<MasterChatMessage> ChatMessages {get;set;}=[];
     public TravelStats TravelStats {get;set;}=new();
     public ReportState? Report { get; set; }
@@ -32,6 +34,7 @@ internal sealed class AdminPet : AdminProfile
 }
 internal sealed class AdminReminder
 {
+    public ResponseOptions? Responses {get;set;}
     public string Id { get; set; }="";
     public string Label { get; set; }="";
     public string Time { get; set; }="";
@@ -41,6 +44,7 @@ internal sealed class AdminReminder
 }
 internal sealed class AdminObservation
 {
+    public string State {get;set;}="";
     public string? LastSeenAtUtc { get; set; }
     public string? SnapshotAtUtc { get; set; }
     public Observation? Reported { get; set; }
@@ -53,6 +57,8 @@ internal sealed class AdminService
 }
 internal sealed class AdminActivity
 {
+    public string? OptionLabel {get;set;}
+    public string? SnoozeMode {get;set;}
     public string Action { get; set; }="";
     public string Label { get; set; }="";
     public string? Reply { get; set; }
@@ -61,6 +67,7 @@ internal sealed class AdminActivity
 }
 internal sealed record AdminAction
 {
+    public object? Data {get;init;}
     public string Action { get; init; }="";
     public string RequestId { get; init; }=Guid.NewGuid().ToString();
     public string? Pet { get; init; }
@@ -70,6 +77,7 @@ internal sealed record AdminAction
     public string? Name { get; init; }
     public string? Label { get; init; }
     public string? Time { get; init; }
+    public string? TimeZone { get; init; }
     public string? ReminderId { get; init; }
     public string? PromptId { get; init; }
     public string? Text { get; init; }
@@ -89,6 +97,9 @@ internal sealed class AdminActionResult
 }
 internal sealed class SettingsSnapshot
 {
+    public string Section {get;set;}="controls";
+    public MasterIdentity? Identity {get;set;}
+    public FeatureState? Controls {get;set;}
     public string Pet {get;set;}="";
     public string ServerTimeUtc {get;set;}="";
     public DynamicSettings Settings {get;set;}=new();
@@ -101,6 +112,8 @@ internal sealed class ReportState
 }
 internal sealed class LiveReport
 {
+    public Presence? Presence {get;set;}
+    public GameplayLock? Lock {get;set;}
     public List<MasterChatMessage>? ChatMessages {get;set;}
     public string ServerTimeUtc {get;set;}="";
     public AdminObservation Status {get;set;}=new();

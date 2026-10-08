@@ -36,7 +36,7 @@ internal sealed unsafe class ChatCommandGuard : IDisposable
         {
             hook?.Dispose();
             hook = null;
-            log.Error(exception, "Could not install chat command guard; chat stays blocked during reminders.");
+            log.Error(exception, "Could not install chat command guard; gameplay guarding is unavailable.");
         }
     }
 

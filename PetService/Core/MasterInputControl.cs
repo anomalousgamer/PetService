@@ -27,6 +27,7 @@ internal sealed class MasterInputControl : IDisposable
         if (!enabled) requests.Cancel();
     }
 
+    public void Invalidate(){Revision++;requests.Cancel();requests.Dispose();requests=new();if(!Enabled)requests.Cancel();}
     public bool Accepts(long revision) => Enabled && revision == Revision;
 
     public void Dispose()

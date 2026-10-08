@@ -27,7 +27,7 @@ internal sealed unsafe class MovementGuard : IDisposable
         {
             hook?.Dispose();
             hook = null;
-            log.Error(exception, "Could not install movement guard; reminders fall back to full input capture.");
+            log.Error(exception, "Could not install movement guard; gameplay guarding is unavailable.");
         }
     }
 

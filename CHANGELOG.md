@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0.0 — A key of your own
+
+- A new face may greet you at the threshold.
+- Each door remembers whose hand may turn its key.
+- Small promises find a place to wait.
+- A quiet pause need not carry a letter.
+
+
 ## 0.3.1.0
 
 - Master had some things to fix

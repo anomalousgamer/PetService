@@ -3,7 +3,7 @@
     "Author": "Anomaly",
     "Name": "Pet Service",
     "InternalName": "PetService",
-    "AssemblyVersion": "0.3.1.0",
+    "AssemblyVersion": "0.4.0.0",
     "Description": "A private FFXIV tool for consensual pet/master roleplay and power dynamics. Masters manage prompts, routines, contact requests, locally garbled speech, and observed activity through Discord, the website, or the in-game Master page. Pets keep a local kill switch; ordinary game chat and conversation partners stay private.",
     "ApplicableVersion": "any",
     "Tags": [
@@ -21,10 +21,10 @@
     "Punchline": "Consensual pet/master roleplay, messages, and shared routines.",
     "AcceptsFeedback": true,
     "RepoUrl": "https://github.com/anomalousgamer/PetService",
-    "Changelog": "Master had some things to fix",
+    "Changelog": "A new face at the threshold. Each door remembers its key. Small promises find a place to wait.",
     "IsHide": false,
-    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.3.1.0/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.3.1.0/latest.zip",
+    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.4.0.0/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.4.0.0/latest.zip",
     "LastUpdate": 1791388896,
     "IconUrl": "https://raw.githubusercontent.com/anomalousgamer/PetService/main/images/icon.png"
   }

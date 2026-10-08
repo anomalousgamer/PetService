@@ -2,6 +2,7 @@ namespace PetService.Core;
 
 public sealed class ActivityRecord
 {
+    public string CharacterId {get;set;}="";
     public string Id { get; set; }=Guid.NewGuid().ToString();
     public string Kind { get; set; }="";
     public string AtUtc { get; set; }="";

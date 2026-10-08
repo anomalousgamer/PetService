@@ -2,6 +2,7 @@ namespace PetService.Core;
 
 public sealed class Schedule
 {
+    public ResponseOptions? Responses {get;set;}
     public string Id { get; set; } = "";
     public string Label { get; set; } = "";
     public string Time { get; set; } = "";
@@ -11,6 +12,7 @@ public sealed class Schedule
 }
 public sealed class Prompt
 {
+    public ResponseOptions? Responses {get;set;}
     public string Id { get; set; } = "";
     public string Kind { get; set; } = "";
     public string? ReminderId { get; set; }
@@ -27,6 +29,10 @@ public sealed class Prompt
 }
 public sealed class Choice
 {
+    public long? AccessRevision {get;set;}
+    public string? ResponseRevision {get;set;}
+    public string? OptionId {get;set;}
+    public string? SnoozeMode {get;set;}
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string OccurrenceId { get; set; } = "";
     public string Action { get; set; } = "";
@@ -38,6 +44,7 @@ public sealed class Choice
 }
 public sealed class Observation
 {
+    [System.Text.Json.Serialization.JsonIgnore][Newtonsoft.Json.JsonIgnore]public string LocalCharacterId {get;set;}="";
     public string TimeZone { get; set; } = "";
     public bool LoggedIn { get; set; }
     public bool Ready { get; set; }
@@ -75,6 +82,9 @@ public sealed class PairResult
 }
 public sealed class SyncResult
 {
+    public FeatureState Features {get;set;}=new();
+    public List<UploadRejection> RejectedEvents {get;set;}=[];
+    public List<UploadRejection> RejectedActivity {get;set;}=[];
     public List<MasterChatMessage> ChatMessages {get;set;}=[];
     public bool LiveReportsRequested { get; set; }
     public string? FreshReportRequestId { get; set; }
@@ -99,6 +109,8 @@ public sealed class MasterChatMessage
 }
 public sealed class DeviceEventResult
 {
+    public List<UploadRejection> RejectedResults {get;set;}=[];
+    public List<string> AcceptedResultIds {get;set;}=[];
     public string PetId { get; set; } = "";
     public List<string> AcceptedEventIds { get; set; } = [];
 }

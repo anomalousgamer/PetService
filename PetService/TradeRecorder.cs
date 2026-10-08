@@ -36,7 +36,7 @@ internal sealed unsafe class TradeRecorder : IDisposable
             } catch(Exception fallback) {simpleMessage?.Dispose();simpleMessage=null;Plugin.Log.Warning(fallback,"Trade outcomes will remain unconfirmed when no result event is observed.");}
         }
     }
-    private bool Enabled=>plugin.IsPaired && !plugin.KillSwitchOn && plugin.Configuration.ActivityOutbox.Count<50000;
+    private bool Enabled=>plugin.SharingAllowed && plugin.Configuration.ActivityOutbox.Count<50000;
     private void Enqueue(uint id)
     {
         if(!Enabled || !TradeTracker.IsSignal(id) || signals.Count>=32)return;

@@ -29,7 +29,7 @@ internal sealed unsafe class TravelRecorder : IDisposable
         try {history=Plugin.Interop.HookFromAddress<TeleportHistoryModule.Delegates.AddToHistory>((nint)TeleportHistoryModule.MemberFunctionPointers.AddToHistory,AddedToHistory);history.Enable();}
         catch(Exception e){history?.Dispose();history=null;Plugin.Log.Warning(e,"Teleport completion observation is unavailable; loading/zone arrivals remain observed.");}
     }
-    private bool Active=>plugin.IsPaired && !plugin.KillSwitchOn && Plugin.ClientState.IsLoggedIn;
+    private bool Active=>plugin.SharingAllowed && Plugin.ClientState.IsLoggedIn;
     private bool Teleport(Telepo* self,uint id,byte index)
     {
         var result=teleport!.Original(self,id,index);

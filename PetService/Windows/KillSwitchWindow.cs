@@ -29,8 +29,8 @@ internal sealed class KillSwitchWindow : Window
         ImGui.SetNextWindowPos(viewport.Pos+viewport.Size/2f,ImGuiCond.Appearing,new Vector2(.5f));
         var keepOpen=true;
         if(ImGui.BeginPopupModal(PopupName,ref keepOpen,ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings)) {
-            ImGui.TextUnformatted("Pause all master messages, reminders, and status sharing?");
-            ImGui.TextUnformatted("A kill-switch notice will be sent to the master.");
+            ImGui.TextUnformatted($"Pause all messages from {plugin.MasterName}, reminders, and status sharing?");
+            ImGui.TextUnformatted($"A kill-switch notice will be sent to {plugin.MasterName}.");
             ImGui.TextUnformatted("Only you can turn it off again.");
             ImGui.Spacing();
             if(ImGui.Button("Confirm — turn on kill switch")) {plugin.ConfirmKillSwitch();ImGui.CloseCurrentPopup();IsOpen=false;}
