@@ -11,6 +11,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     private string settingsTaskPet="";
     private long nextSettings,settingsRevision,settingsTaskRevision;
     private bool settingsVisible;private string settingsSection="controls",settingsCharacter="";
+    internal long JournalRevision=>selectionRevision;
     internal long SettingsReadCount {get;private set;}
     private Task<ControlHistoryPage>? controlHistoryTask;
     internal List<ControlEvent> OlderControlHistory{get;private set;}=[];
@@ -53,6 +54,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
         if(Busy || Unlocked || value.Length==0)return;
         password=value;Error="";Refresh();
     }
+    internal Task<JsonElement> ReadJournal(string query,bool analytics)=>client.Journal(password,Selected,query,analytics,cancel.Token);
     internal Task<byte[]> Portrait()=>client.Portrait(password,cancel.Token);
     internal void Refresh()
     {
@@ -84,7 +86,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
                 var result=task.GetAwaiter().GetResult();
                 if(settingsTaskRevision==settingsRevision && result.Pet==settingsTaskPet && Selected==settingsTaskPet && Dashboard?.Selected is { } pet && pet.Name==Selected) {
                     if(!DateTimeOffset.TryParse(result.ServerTimeUtc,out var stamp))throw new AdminFailure("INVALID_RESPONSE");
-                    result.Settings.NormalizeContacts();pet.Settings=result.Settings;if(result.Identity is not null)Dashboard.Identity=result.Identity;if(result.Controls is not null){pet.Features.Presence=result.Controls.Presence;switch(result.Section){case "inventory":pet.Features.SnapshotIssues=result.Controls.SnapshotIssues;pet.Features.Inventory=result.Controls.Inventory;break;case "tasks":pet.Features.Tasks=result.Controls.Tasks;break;case "rewards":pet.Features.Rewards=result.Controls.Rewards;break;default:pet.Features.Characters=result.Controls.Characters;pet.Features.SnapshotIssues=result.Controls.SnapshotIssues;pet.Features.Lock=result.Controls.Lock;pet.Features.Catalog=result.Controls.Catalog;pet.Features.Catalogs=result.Controls.Catalogs;pet.Features.IntegrationCommands=result.Controls.IntegrationCommands;pet.Features.ControlHistory=result.Controls.ControlHistory;pet.Features.ControlHistoryCursor=result.Controls.ControlHistoryCursor;break;}}SettingsReadCount++;Error="";
+                    result.Settings.NormalizeContacts();pet.Settings=result.Settings;if(result.Identity is not null)Dashboard.Identity=result.Identity;if(result.Controls is not null){pet.Features.Presence=result.Controls.Presence;switch(result.Section){case "inventory":pet.Features.SnapshotIssues=result.Controls.SnapshotIssues;pet.Features.Inventory=result.Controls.Inventory;break;case "tasks":pet.Features.Tasks=result.Controls.Tasks;break;case "rewards":pet.Features.Rewards=result.Controls.Rewards;break;default:pet.Features.Characters=result.Controls.Characters;pet.Features.SnapshotIssues=result.Controls.SnapshotIssues;pet.Features.Lock=result.Controls.Lock;pet.Features.Sleep=result.Controls.Sleep;pet.Features.Catalog=result.Controls.Catalog;pet.Features.Catalogs=result.Controls.Catalogs;pet.Features.IntegrationCommands=result.Controls.IntegrationCommands;if(result.Controls.ActiveIntegrationCommands is not null)pet.Features.ActiveIntegrationCommands=result.Controls.ActiveIntegrationCommands;pet.Features.ControlHistory=result.Controls.ControlHistory;pet.Features.ControlHistoryCursor=result.Controls.ControlHistoryCursor;break;}}SettingsReadCount++;Error="";
                     clockOffset=(stamp-DateTimeOffset.UtcNow).TotalMilliseconds;
                 }
             } catch(Exception e){if(settingsTaskRevision==settingsRevision){Failure(e);nextSettings=Environment.TickCount64+15000;}}
@@ -125,7 +127,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
                     savedPet.Settings=DynamicSettingsEditor.Clone(CompletedResult.Settings ?? activeAction.Settings!);
                     nextSettings=0;
                 }
-                Notice=activeAction?.Action switch{"sendChat"=>"Master chat message queued.","cancelChat"=>"Chat cancellation saved.","requestReport"=>"Fresh report requested. Waiting for the pet's plugin…","sendMessage"=>"Message queued.","createPet"=>"Pet profile created.","pair"=>"Pairing code generated.","revoke"=>"Device revoked.","addReminder"=>"Daily reminder added.","disableReminder"=>"Reminder disabled.","cancelPrompt"=>"Pending prompt cancelled.",_=>"Saved."};
+                Notice=activeAction?.Action switch{"sendChat"=>"Master chat message queued.","cancelChat"=>"Chat cancellation saved.","requestReport"=>"Fresh report requested. Waiting for the pet's plugin…","sendMessage"=>"Message queued.","createPet"=>"Pet profile created.","pair"=>"Pairing code generated.","revoke"=>"Device revoked.","addReminder"=>"Daily reminder added.","disableReminder"=>"Reminder disabled.","cancelPrompt"=>"Pending prompt canceled.","taskEvidence"=>"Task evidence saved.","honorific" or "moodles"=>"Request queued. Waiting for the pet’s plugin.",_=>"Saved."};
                 if(activeAction?.Action=="requestReport"){requestedReportAt=CompletedResult.RequestedAtUtc;nextLive=0;}
                 if(activeAction?.Action=="createPet")Selected=CompletedResult.Pet;
                 if(activeAction?.Action=="deletePet")Selected="";
@@ -176,7 +178,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     {
         if(exception is AdminFailure{Unauthorized:true}){Lock();Error="Administrator password was not accepted. Unlock again.";return;}
         Error=exception.Message switch {
-            "CHAT_QUEUE_FULL"=>"This pet already has 100 queued chat messages.","INVALID_CHAT_EXPIRY"=>"Choose 0–10,080 minutes for message expiration.","PET_NOT_PAIRED"=>"Pair this pet before requesting a fresh report.","PET_NAME_EXISTS"=>"A pet with that name already exists.","INVALID_PET_NAME"=>"Use a lowercase name with letters, numbers, hyphens or underscores.",
+            "TASK_EVIDENCE_LIMIT"=>"This task already has 100 attached observations.","OBSERVATION_NOT_FOUND"=>"This observation is no longer available. Search again.","INVALID_OBSERVATION"=>"Choose an event observation to attach to this task.","CHARACTER_NOT_ALLOWED"=>"This character is not approved for Master controls.","CHAT_QUEUE_FULL"=>"This pet already has 100 queued chat messages.","INVALID_CHAT_EXPIRY"=>"Choose 0–10,080 minutes for message expiration.","PET_NOT_PAIRED"=>"Pair this pet before requesting a fresh report.","PET_NAME_EXISTS"=>"A pet with that name already exists.","INVALID_PET_NAME"=>"Use a lowercase name with letters, numbers, hyphens or underscores.",
             "PET_NOT_FOUND"=>"This pet could not be found. Lock and reopen the portal.","PET_TIME_ZONE_UNKNOWN"=>"Connect this pet's plugin once before adding a daily reminder.",
             "INVALID_REPLY_CHOICES"=>"Check the button labels: up to 32 different labels, 80 characters each.","INVALID_REPLY_OPTIONS"=>"Add a reply button or allow a written reply.",
             "REMINDER_LIMIT"=>"This pet already has 32 enabled reminders.","MESSAGE_QUEUE_FULL"=>"This pet already has 50 pending messages.","REQUEST_ID_CONFLICT"=>"The action identifier was already used with different details. Refresh and try again.",

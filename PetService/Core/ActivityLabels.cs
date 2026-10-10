@@ -4,6 +4,7 @@ namespace PetService.Core;
 internal static class ActivityLabels
 {
     internal static string Kind(string kind)=>kind switch {
+        "currency"=>"Currency change","combat"=>"Character unconscious / recovery","response"=>"Pet Service response","bond"=>"Bonding outcome","sleep"=>"Sleep outcome",
         "travel"=>"Completed travel","session"=>"Session change","zone"=>"Location change","state"=>"Activity status change",
         "job"=>"Job or level change","duty"=>"Duty event","inventory"=>"Inventory change",
         "loot"=>"Item received","trade"=>"Trade observation","retainer"=>"Retainer result",

@@ -4,6 +4,8 @@ namespace PetService;
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
+    public List<string> EndedSleepIds {get;set;}=[];
+    public string MasterChatRgb {get;set;}="";
     public List<CharacterAccess> Characters {get;set;}=[];
     public Dictionary<string,string> ManagedTitles {get;set;}=[];
     public Dictionary<string,string> PreviousTitles {get;set;}=[];

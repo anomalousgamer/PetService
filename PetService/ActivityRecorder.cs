@@ -23,6 +23,7 @@ internal sealed unsafe class ActivityRecorder : IDisposable
     private bool endingObservedSession;
     private string runId="",dutyOutcome="unconfirmed",retainerState="";
     private uint dutyId;
+    private uint? previousGil;
     internal string Error {get;private set;}="";
     internal ActivityRecorder(Plugin plugin)
     {
@@ -40,7 +41,7 @@ internal sealed unsafe class ActivityRecorder : IDisposable
             Data=data.Where(p=>p.Value is not null).ToDictionary(p=>p.Key,p=>p.Value)});
         if(kind is not "interval" and not "position")eventPending=true;
     }
-    private static Dictionary<string,object?> Snapshot(Observation o)=>new(){["zone"]=o.Zone,["world"]=o.CurrentWorld,["dataCenter"]=o.DataCenter,["territoryId"]=o.TerritoryId,["mapId"]=o.MapId,["x"]=o.X,["y"]=o.Y,["job"]=o.Job,["level"]=o.Level,["ready"]=o.Ready,["inDuty"]=o.InDuty,["inCombat"]=o.InCombat,["isAfk"]=o.IsAfk,["gameIdle"]=o.GameIdle,["crafting"]=o.Crafting,["gathering"]=o.Gathering,["mounted"]=o.Mounted,["cutscene"]=o.Cutscene,["unconscious"]=o.Unconscious};
+    private static Dictionary<string,object?> Snapshot(Observation o)=>new(){["zone"]=o.Zone,["world"]=o.CurrentWorld,["dataCenter"]=o.DataCenter,["territoryId"]=o.TerritoryId,["mapId"]=o.MapId,["x"]=o.X,["y"]=o.Y,["job"]=o.Job,["level"]=o.Level,["ready"]=o.Ready,["inDuty"]=o.InDuty,["inCombat"]=o.InCombat,["isAfk"]=o.IsAfk,["gameIdle"]=o.GameIdle,["crafting"]=o.Crafting,["gathering"]=o.Gathering,["mounted"]=o.Mounted,["cutscene"]=o.Cutscene,["unconscious"]=o.Unconscious,["inputGuardActive"]=o.InputGuardActive,["bonded"]=o.Bonded,["sleeping"]=o.Sleeping,["promptActive"]=o.PromptActive};
     private void FlushInterval(DateTimeOffset stamp)
     {
         if(intervalStart is { } start && previous is {LoggedIn:true}) {
@@ -66,14 +67,15 @@ internal sealed unsafe class ActivityRecorder : IDisposable
                 if(runId.Length>0)DutyRecord("interrupted","unknown");
                 Add("session",new(){["reason"]=o.LoggedIn?"character changed":"logout observed",["source"]="end"},previous,stamp);
             }
-            runId="";dutyId=0;baselined.Clear();baselineAfter=tick+10000;
+            runId="";dutyId=0;baselined.Clear();previousGil=null;baselineAfter=tick+10000;
             if(o.LoggedIn){Add("session",new(){["source"]=o.LoginTimeSource,["reason"]="recording begins"},o,stamp);intervalStart=stamp;}
             else intervalStart=null;
         }
         if(previous?.LoggedIn==true && (intervalStart is null || (stamp-intervalStart.Value).TotalSeconds>=15
-            || previous.TerritoryId!=o.TerritoryId || previous.CurrentWorld!=o.CurrentWorld || previous.Job!=o.Job || previous.Ready!=o.Ready))FlushInterval(stamp);
+            || previous.TerritoryId!=o.TerritoryId || previous.CurrentWorld!=o.CurrentWorld || previous.Job!=o.Job || previous.Ready!=o.Ready || StateKey(previous)!=StateKey(o)))FlushInterval(stamp);
         if(previous is null || StateKey(previous)!=StateKey(o))Add("state",Snapshot(o),o,stamp);
         if(o.Ready) {
+            if(previous?.Ready==true&&previous.Unconscious!=o.Unconscious)Add("combat",new(){["phase"]=o.Unconscious?"unconscious-observed":"recovery-observed",["source"]="character state; cause unconfirmed"},o,stamp);
             if(previous?.Ready!=true || previous.Zone!=o.Zone || previous.CurrentWorld!=o.CurrentWorld || previous.DataCenter!=o.DataCenter || previous.TerritoryId!=o.TerritoryId || previous.MapId!=o.MapId)Add("zone",Snapshot(o),o,stamp);
             if(previous?.Job!=o.Job || previous.Level!=o.Level)Add("job",Snapshot(o),o,stamp);
             previous=o;
@@ -83,7 +85,7 @@ internal sealed unsafe class ActivityRecorder : IDisposable
                 dutyId=currentDuty;runId="";
                 if(currentDuty>0){runId=Guid.NewGuid().ToString();dutyOutcome="unconfirmed";DutyRecord(Plugin.Duty.IsDutyStarted?"joined-in-progress":"entered","unconfirmed");}
             }
-            if(tick>=baselineAfter)BaselineContainers();
+            if(tick>=baselineAfter){BaselineContainers();ObserveGil();}
             ObserveNative();
         }
         previous=o;lastObserved=stamp;
@@ -91,7 +93,7 @@ internal sealed unsafe class ActivityRecorder : IDisposable
         if(eventPending && pending.Count==0){eventPending=false;plugin.RequestObservationUpload();}
         if(plugin.Configuration.ActivityOutbox.Count+pending.Count>=50000)Error="Local activity queue is full. Recording pauses until the service accepts saved observations.";
     }
-    private static string StateKey(Observation o)=>$"{o.Ready}:{o.InDuty}:{o.InCombat}:{o.IsAfk}:{o.GameIdle}:{o.Crafting}:{o.Gathering}:{o.Mounted}:{o.Cutscene}:{o.Unconscious}";
+    private static string StateKey(Observation o)=>$"{o.Ready}:{o.InDuty}:{o.InCombat}:{o.IsAfk}:{o.GameIdle}:{o.Crafting}:{o.Gathering}:{o.Mounted}:{o.Cutscene}:{o.Unconscious}:{o.InputGuardActive}:{o.Bonded}:{o.Sleeping}:{o.PromptActive}";
     private void DutyRecord(string phase,string outcome)
     {
         if(runId.Length==0 || dutyId==0)return;
@@ -131,6 +133,13 @@ internal sealed unsafe class ActivityRecorder : IDisposable
         Add("inventory",data);
     }
     private static string ItemName(uint id)=>Plugin.Data.GetExcelSheet<Item>()?.GetRowOrDefault(id)?.Name.ToString()??$"Item {id}";
+    private void ObserveGil()
+    {
+        var manager=InventoryManager.Instance();if(manager==null)return;
+        var gil=manager->GetGil();
+        if(previousGil is { } old&&old!=gil)Add("currency",new(){["currency"]="Gil",["amount"]=gil,["previousAmount"]=old,["delta"]=(long)gil-old,["source"]="unconfirmed"});
+        previousGil=gil;
+    }
     private void ObserveNative()
     {
         // Read only mapped agent fields. Do not read player-name/roster/chat fields.
@@ -142,7 +151,7 @@ internal sealed unsafe class ActivityRecorder : IDisposable
                 var key=$"{(manager==null?0:manager->LastSelectedRetainerId)}:{result.RewardRetainerTaskId}:{result.RewardXP}:{string.Join(',',result.RewardItemIds.ToArray())}:{string.Join(',',result.RewardItemCount.ToArray())}";
                 if(key!=retainerState) {
                     retainerState=key;
-                    var items=new List<object>();for(var i=0;i<2;i++)if(result.RewardItemIds[i]>0)items.Add(new {itemId=result.RewardItemIds[i]%1000000,quantity=result.RewardItemCount[i],hq=result.RewardItemIds[i]>=1000000});
+                    var items=new List<object>();for(var i=0;i<2;i++)if(result.RewardItemIds[i]>0)items.Add(new {itemId=result.RewardItemIds[i]%1000000,name=ItemName(result.RewardItemIds[i]%1000000),quantity=result.RewardItemCount[i],hq=result.RewardItemIds[i]>=1000000});
                     var retainerName=activeRetainer==null?"":activeRetainer->NameString;
                     Add("retainer",new(){["name"]=retainerName,["phase"]="result-presented; collection unconfirmed",["taskId"]=result.RewardRetainerTaskId,["xp"]=result.RewardXP,["items"]=items});
                 }
@@ -156,11 +165,11 @@ internal sealed unsafe class ActivityRecorder : IDisposable
             trades.Stop(reason);
             if(endingObservedSession){var at=Active?DateTimeOffset.UtcNow:lastObserved;FlushInterval(at);if(runId.Length>0)DutyRecord("interrupted","unknown");Add("session",new(){["source"]="end",["reason"]=reason},previous,at);}
         } finally {endingObservedSession=false;}
-        Save();previous=null;intervalStart=null;baselined.Clear();runId="";dutyId=0;
+        Save();previous=null;intervalStart=null;baselined.Clear();previousGil=null;runId="";dutyId=0;
     }
     internal void ClearPairingState()
     {
-        pending.Clear();previous=null;intervalStart=null;baselined.Clear();runId="";dutyId=0;
+        pending.Clear();previous=null;intervalStart=null;baselined.Clear();previousGil=null;runId="";dutyId=0;
         trades.Reset();retainerState="";Error="";nextPoll=0;eventPending=false;
     }
     internal bool FlushForReport(){Save();return pending.Count==0;}

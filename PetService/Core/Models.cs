@@ -53,6 +53,9 @@ public sealed class Observation
     public bool IsAfk { get; set; }
     public bool GameIdle { get; set; }
     public bool InputGuardActive { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore][Newtonsoft.Json.JsonIgnore]public bool Bonded {get;set;}
+    [System.Text.Json.Serialization.JsonIgnore][Newtonsoft.Json.JsonIgnore]public bool Sleeping {get;set;}
+    [System.Text.Json.Serialization.JsonIgnore][Newtonsoft.Json.JsonIgnore]public bool PromptActive {get;set;}
     public bool LocalRelease { get; set; }
     public string SessionId { get; set; } = "";
     public string LoginObservedAtUtc { get; set; } = "";

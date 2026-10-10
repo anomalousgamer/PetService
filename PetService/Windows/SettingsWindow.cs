@@ -29,7 +29,7 @@ internal sealed class SettingsWindow : Window,IDisposable
     private void DrawContent()
     {
         EditingText=false;
-        Style.Title("PET SERVICE","Pet and Master controls · 0.4.0.1");
+        Style.Title("PET SERVICE","Pet and Master controls · 0.5.0.0");
         ImGui.BeginChild("PetServiceMain",new Vector2(0,-85),false);
         var masterShown=false;
         if(ImGui.BeginTabBar("roles")) {
@@ -41,7 +41,7 @@ internal sealed class SettingsWindow : Window,IDisposable
         if(!masterShown)master.Hide();
         ImGui.Separator();var paused=plugin.KillSwitchOn;
         if(ImGui.Checkbox("Kill switch · pause this device",ref paused))plugin.SetEnabled(!paused);
-        if(paused)ImGui.TextColored(Style.Accent,$"{plugin.MasterName} input, recording, sharing and garbling are paused.");
+        if(paused)ImGui.TextColored(Style.Accent,$"{plugin.MasterName} input, recording, sharing and gagging are paused.");
         if(plugin.SaveError.Length>0)ImGui.TextWrapped(plugin.SaveError);
         if(!paused && plugin.ActivityError.Length>0)ImGui.TextWrapped(plugin.ActivityError);
     }
@@ -54,7 +54,7 @@ internal sealed class SettingsWindow : Window,IDisposable
             features.Home();if(plugin.LockRequested)Style.Metric("Gameplay",plugin.Configuration.Features.Lock?.State??"Queued","petlock");ImGui.Spacing();Style.Title(plugin.IsPaired?plugin.Configuration.PetName:"Welcome home",plugin.ServiceStatus);
             Style.Metric("Your connection",plugin.KillSwitchOn?"Paused":plugin.IsPaired?"Paired":"Setup needed","petconnection");
             ImGui.Spacing();
-            Style.Metric("Your voice",plugin.KillSwitchOn || !plugin.Configuration.Dynamic.GarbleEnabled?"Natural":"Garbling · "+plugin.Configuration.Dynamic.GarbleStyle,"petvoice");
+            Style.Metric("Your voice",plugin.KillSwitchOn || !plugin.Configuration.Dynamic.GarbleEnabled?"Natural":"Gagged · "+plugin.Configuration.Dynamic.GarbleStyle,"petvoice");
             ImGui.TextWrapped(plugin.KillSwitchOn?"You choose when to resume. "+plugin.MasterName+" cannot turn your kill switch off.":"Use Contact to send a little signal home. Use Setup to manage your pairing.");
             ImGui.EndTabItem();
         }
@@ -99,11 +99,14 @@ internal sealed class SettingsWindow : Window,IDisposable
             foreach(var kind in new[]{"echo","system"})if(ImGui.Selectable(kind=="echo"?"Echo":"System messages",plugin.Configuration.MasterChatType==kind))plugin.Mutate(c=>c.MasterChatType=kind);
             ImGui.EndCombo();
         }
-        var colours=new (string Label,ushort Id)[]{("Default",0),("Gold",540),("Green",504),("Blue",37),("Pink",561)};
-        if(ImGui.BeginCombo("Message colour",colours.FirstOrDefault(c=>c.Id==plugin.Configuration.MasterChatColour).Label??"Default")) {
-            foreach(var colour in colours)if(ImGui.Selectable(colour.Label,colour.Id==plugin.Configuration.MasterChatColour))plugin.Mutate(c=>c.MasterChatColour=colour.Id);
-            ImGui.EndCombo();
+        var hex=plugin.Configuration.MasterChatRgb;
+        var colour=System.Numerics.Vector3.One;
+        if(uint.TryParse(hex.TrimStart('#'),System.Globalization.NumberStyles.HexNumber,null,out var rgb))colour=new((rgb>>16)/255f,((rgb>>8)&255)/255f,(rgb&255)/255f);
+        if(ImGui.ColorPicker3("Message color",ref colour,ImGuiColorEditFlags.PickerHueWheel|ImGuiColorEditFlags.DisplayHex)) {
+            var chosen=$"#{(int)Math.Round(colour.X*255):x2}{(int)Math.Round(colour.Y*255):x2}{(int)Math.Round(colour.Z*255):x2}";
+            plugin.Mutate(c=>c.MasterChatRgb=chosen);
         }
+        if(ImGui.Button("Reset chat color"))plugin.Mutate(c=>{c.MasterChatRgb="";c.MasterChatColour=0;});
         var sound=plugin.Configuration.MasterChatSound;if(ImGui.Checkbox("Play a notification sound",ref sound))plugin.Mutate(c=>c.MasterChatSound=sound);
         if(ImGui.Button("Preview in chat"))MasterChatDelivery.Print(plugin.Configuration,"A little message from your "+plugin.MasterName+".");
         ImGui.Spacing();

@@ -4,8 +4,60 @@ using Dalamud.Interface;
 namespace PetService.Windows;
 internal static class Style
 {
+    private static readonly Stack<(Vector2 Start,float Width)> Cards=[];
     internal static Vector4 Accent=new(.76f,.63f,.98f,1),Muted=new(.74f,.76f,.85f,1),Good=new(.48f,.86f,.69f,1);
-    internal static void ApplyTheme(string value){if(value.Length==7&&uint.TryParse(value.AsSpan(1),System.Globalization.NumberStyles.HexNumber,null,out var n))Accent=new(((n>>16)&255)/255f,((n>>8)&255)/255f,(n&255)/255f,1);}
+    internal static Vector4 AccentText => Accent.X*299+Accent.Y*587+Accent.Z*114 < 145*1000/255f ? Vector4.One : new(.09f,.07f,.13f,1);
+    internal static void ApplyTheme(string value){if(value.Length==7&&value[0]=='#'&&uint.TryParse(value.AsSpan(1),System.Globalization.NumberStyles.HexNumber,null,out var n))Accent=new(((n>>16)&255)/255f,((n>>8)&255)/255f,(n&255)/255f,1);}
+    internal static void BeginCard(string id,string title="",string description="")
+    {
+        ImGui.PushID(id);ImGui.BeginGroup();
+        Cards.Push((ImGui.GetCursorScreenPos(),ImGui.GetContentRegionAvail().X));
+        ImGui.Dummy(new Vector2(0,12));ImGui.Indent(12);ImGui.PushItemWidth(Math.Max(1,ImGui.GetContentRegionAvail().X-12));
+        if(title.Length>0)Title(title,description);
+    }
+    internal static void EndCard()
+    {
+        var card=Cards.Pop();ImGui.PopItemWidth();ImGui.Unindent(12);
+        ImGui.Dummy(new Vector2(card.Width,12));ImGui.EndGroup();
+        ImGui.GetWindowDrawList().AddRect(card.Start,new Vector2(card.Start.X+card.Width,ImGui.GetItemRectMax().Y),ImGui.GetColorU32(new Vector4(.23f,.25f,.33f,1)),12);
+        ImGui.PopID();ImGui.Spacing();
+    }
+    internal static bool ColorField(string label,ref string hex)
+    {
+        var rgb=0xffffffu;if(hex.Length==7&&hex[0]=='#')uint.TryParse(hex.AsSpan(1),System.Globalization.NumberStyles.HexNumber,null,out rgb);
+        var color=new Vector3(((rgb>>16)&255)/255f,((rgb>>8)&255)/255f,(rgb&255)/255f);
+        ImGui.PushID(label);ImGui.TextUnformatted(label);
+        if(ImGui.ColorButton("##color",new Vector4(color,1),ImGuiColorEditFlags.NoTooltip,new Vector2(74,44)))ImGui.OpenPopup("Choose color");
+        ImGui.SameLine();ImGui.TextUnformatted(hex.ToUpperInvariant());
+        var changed=false;
+        if(ImGui.BeginPopup("Choose color")) {
+            ImGui.SetNextItemWidth(280*Dalamud.Interface.Utility.ImGuiHelpers.GlobalScale);
+            if(ImGui.ColorPicker3("##picker",ref color,ImGuiColorEditFlags.PickerHueWheel|ImGuiColorEditFlags.DisplayHex)) {
+                hex=$"#{Math.Clamp((int)Math.Round(color.X*255),0,255):x2}{Math.Clamp((int)Math.Round(color.Y*255),0,255):x2}{Math.Clamp((int)Math.Round(color.Z*255),0,255):x2}";changed=true;
+            }
+            if(ImGui.Button("Done"))ImGui.CloseCurrentPopup();ImGui.EndPopup();
+        }
+        ImGui.PopID();return changed;
+    }
+    internal static bool PrimaryButton(string label,Vector2 size)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Button,Accent);ImGui.PushStyleColor(ImGuiCol.Text,AccentText);
+        var clicked=ImGui.Button(label,size);ImGui.PopStyleColor(2);return clicked;
+    }
+    internal static bool BeginCombo(string label,string preview)
+    {
+        ImGui.TextUnformatted(label);ImGui.SetNextItemWidth(-12);
+        return ImGui.BeginCombo("##"+label,preview);
+    }
+    internal static bool InputInt(string label,ref int value)
+    {
+        ImGui.TextWrapped(label);ImGui.SetNextItemWidth(Math.Max(1,Math.Min(220,ImGui.GetContentRegionAvail().X-12)));
+        return ImGui.InputInt("##"+label,ref value);
+    }
+    internal static bool Combo(string label,ref int value,string[] choices,int count)
+    {
+        ImGui.TextUnformatted(label);ImGui.SetNextItemWidth(-12);return ImGui.Combo("##"+label,ref value,choices,count);
+    }
     internal static void Push()
     {
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding,new Vector2(22,20));
@@ -24,7 +76,8 @@ internal static class Style
     internal static void PopContent()=>ImGui.PopStyleVar(4);
     internal static void Title(string text,string sub)
     {
-        ImGui.TextColored(Accent,text);ImGui.TextColored(Muted,sub);ImGui.Spacing();
+        ImGui.PushStyleColor(ImGuiCol.Text,Accent);ImGui.TextWrapped(text);ImGui.PopStyleColor();
+        if(sub.Length>0){ImGui.PushStyleColor(ImGuiCol.Text,Muted);ImGui.TextWrapped(sub);ImGui.PopStyleColor();}ImGui.Spacing();
     }
     internal static bool LiteralButton(string text,string id,Vector2 size){var start=ImGui.GetCursorScreenPos();var width=size.X<0?ImGui.GetContentRegionAvail().X:size.X;var height=Math.Max(size.Y,ImGui.CalcTextSize(text,false,width-16).Y+16);var clicked=ImGui.Button("##"+id,new Vector2(width,height));ImGui.GetWindowDrawList().AddText(ImGui.GetFont(),ImGui.GetFontSize(),start+new Vector2(8,8),ImGui.GetColorU32(ImGuiCol.Text),text,width-16);return clicked;}
     internal static bool IconButton(FontAwesomeIcon icon,string text,Vector2 size)

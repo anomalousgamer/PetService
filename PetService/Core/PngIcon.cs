@@ -4,6 +4,12 @@ using System.Text;
 namespace PetService.Core;
 internal static class PngIcon
 {
+ internal static bool PortraitHeaderValid(byte[] bytes)
+ {
+  if(bytes.Length is <33 or >2000000||!bytes.AsSpan(0,8).SequenceEqual(new byte[]{137,80,78,71,13,10,26,10})||!bytes.AsSpan(12,4).SequenceEqual("IHDR"u8)||BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(8,4))!=13)return false;
+  var width=BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(16,4));var height=BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(20,4));
+  return width is >=1 and <=4096&&height is >=1 and <=4096;
+ }
  internal static byte[] EncodeBgra(int width,int height,byte[] pixels)
  {
   if(width is <1 or >256||height is <1 or >256||pixels.Length<width*height*4)throw new ArgumentException("Invalid icon dimensions.");

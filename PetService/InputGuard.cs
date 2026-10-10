@@ -15,7 +15,7 @@ namespace PetService;
 /// never an OS keyboard hook. Global controller navigation is restored on exit.
 /// </summary>
 internal sealed unsafe class InputGuard(IKeyState keys, IGamepadState gamepad,
-    NativeChat nativeChat, ChatCommandGuard commands, MovementGuard movement, IPluginLog log)
+    NativeChat nativeChat, ChatCommandGuard commands, MovementGuard movement, ChatTwoBridge chatTwo, Func<bool> sleeping, IPluginLog log)
 {
     // Some API 15 builds expose this service property; earlier builds use the ImGui flag.
     private readonly PropertyInfo? gamepadNavigation = typeof(IGamepadState)
@@ -75,12 +75,17 @@ internal sealed unsafe class InputGuard(IKeyState keys, IGamepadState gamepad,
         io.ConfigFlags |= ImGuiConfigFlags.NavEnableGamepad;
         // Enter belongs to native chat, rather than activating a reminder button.
         io.ConfigFlags &= ~ImGuiConfigFlags.NavEnableKeyboard;
-        var chatAvailable = commands.Available && movement.Available && nativeChat.Read().Available;
-        io.WantCaptureMouse = !chatAvailable || !mouseOverChat;
-        io.WantCaptureKeyboard = editingReminder || !chatAvailable;
+        chatTwo.Update();
+        var asleep=sleeping();
+        var chatAvailable = !asleep && commands.Available && movement.Available && nativeChat.Read().Available;
+        // ImGui mouse capture blocks the game's UI, not other ImGui windows.
+        // Keep it on over Chat2, while native chat needs its raw game cursor.
+        io.WantCaptureMouse = asleep || !chatAvailable || !mouseOverChat;
+        io.WantCaptureKeyboard = asleep || editingReminder || chatTwo.Focused || !chatAvailable;
         // Dalamud clears all game keys while WantTextInput is true. Only our
         // own text field should set it when native chat access is available.
-        io.WantTextInput = editingReminder || !chatAvailable;
+        io.WantTextInput = asleep || editingReminder || chatTwo.Focused || !chatAvailable;
+        if(asleep){io.ClearInputCharacters();io.ClearInputKeys();}
         lastRendered = Environment.TickCount64;
         SuppressGameplay();
     }
@@ -138,7 +143,7 @@ internal sealed unsafe class InputGuard(IKeyState keys, IGamepadState gamepad,
         var state = commands.Available && movement.Available ? nativeChat.Read() : default;
         validKeys ??= keys.GetValidVirtualKeys().ToArray();
         foreach (var key in validKeys)
-            if (!ChatInputPolicy.PassKey((int)key, state.Available, state.Focused, editingReminder))
+            if (sleeping() || !ChatInputPolicy.PassKey((int)key, state.Available, state.Focused || chatTwo.Focused, editingReminder))
                 keys[key] = false;
 
         // Leave the UI's raw cursor intact for the chat field. Filter the separate

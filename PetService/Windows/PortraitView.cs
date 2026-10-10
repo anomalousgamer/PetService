@@ -15,7 +15,7 @@ internal sealed class PortraitView:IDisposable
  private static async Task<IDalamudTextureWrap> Load(Func<Task<byte[]>> read){var bytes=await read();return await Plugin.Textures.CreateFromImageAsync(bytes,"PetService Master portrait");}
  internal void Preview(byte[] bytes){ForgetPending();texture?.Dispose();texture=null;preview=true;pending=Plugin.Textures.CreateFromImageAsync(bytes,"PetService portrait preview");}
  internal void ResetPreview()=>Dispose();
- internal void Draw(float height=130){if(texture is null)return;ImGui.Image(texture.Handle,new Vector2(height*texture.Width/texture.Height,height));}
+ internal void Draw(float height=130){if(texture is null||texture.Height<=0||texture.Width<=0)return;height=Math.Min(height,Math.Max(1,ImGui.GetContentRegionAvail().X)*texture.Height/texture.Width);ImGui.Image(texture.Handle,new Vector2(height*texture.Width/texture.Height,height));}
  private void ForgetPending(){if(pending is not null)_=pending.ContinueWith(t=>{if(t.Status==TaskStatus.RanToCompletion)t.Result.Dispose();else if(t.IsFaulted)_=t.Exception;},CancellationToken.None,TaskContinuationOptions.ExecuteSynchronously,TaskScheduler.Default);pending=null;}
  public void Dispose(){ForgetPending();texture?.Dispose();texture=null;revision="";preview=false;retry=0;}
 }

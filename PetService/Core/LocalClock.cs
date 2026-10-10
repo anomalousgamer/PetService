@@ -53,7 +53,7 @@ internal static class LocalClock
         ? instant.ToLocalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fffzzz", CultureInfo.InvariantCulture) : "";
 
     internal static string DisplayValue(string value) => Regex.IsMatch(value, @"\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\z")
-        && DateTimeOffset.TryParse(value, out var instant) ? instant.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) : value;
+        && DateTimeOffset.TryParse(value, out var instant) ? instant.ToLocalTime().ToString("g", CultureInfo.GetCultureInfo("en-US")) : value;
 
     internal static string ExportDetails(object details)
     {

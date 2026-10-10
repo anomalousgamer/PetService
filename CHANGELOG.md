@@ -1,8 +1,15 @@
 # Changelog
 
-## 0.4.0.1 — A clearer knock
+## 0.5.0.0 — Where the quiet settles
 
-- Diagnostics
+- A soft word may lay the day to rest; a small light always knows the way back.
+- Old footsteps gather into pages, and the pages remember their seasons.
+- A whisper keeps its doorway, even when the ribbon is tied.
+- Every voice may choose its own shade.
+
+## 0.5.0.0 — A clearer knock
+
+- A quiet knock may now tell why the door stayed closed.
 
 ## 0.4.0.0 — A key of your own
 

@@ -57,7 +57,7 @@ internal sealed class TradeTracker
         if(snapshot.OffersAvailable && (snapshot.Give.Items.Count+snapshot.Receive.Items.Count>0
             || snapshot.Give.Gil>0 || snapshot.Receive.Gil>0 || current.Offer is null))current.Offer=snapshot;
         Finish(id==38?"completed":id==36?"cancelled":"failed","system-event",id switch {
-            36=>"Trade cancelled",39 or 40=>"Insufficient inventory space",42 or 43=>"Unique-item restriction",
+            36=>"Trade canceled",39 or 40=>"Insufficient inventory space",42 or 43=>"Unique-item restriction",
             46 or 47=>"Gil limit reached",54=>"Trade could not be completed",_=>""
         },at);
     }

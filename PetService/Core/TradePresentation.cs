@@ -26,7 +26,7 @@ internal static class TradePresentation
             return lines.Count==0?"None":string.Join('\n',lines);
         }
         string Gil(string key)=>known&&d.TryGetProperty(key,out var value)&&value.ValueKind==JsonValueKind.Number&&value.TryGetUInt32(out var gil)?gil.ToString("N0")+" gil":"Not recorded";
-        var outcome=Text("outcome") switch{"completed"=>"Completed","cancelled"=>"Cancelled","failed"=>"Failed","interrupted"=>"Interrupted",_=>"Completion unconfirmed"};
+        var outcome=Text("outcome") switch{"completed"=>"Completed","cancelled"=>"Canceled","failed"=>"Failed","interrupted"=>"Interrupted",_=>"Completion unconfirmed"};
         var phase=Text("phase");
         var detail=modern?(outcome=="Completed"?"Trade result observed. Amounts are from the trade offers.":"Amounts shown are offered amounts; this record does not confirm a transfer."):
             "Earlier offer record. Quantities, gil and completion were not recorded.";

@@ -21,8 +21,23 @@ internal sealed class MasterPortalClient : IDisposable
     internal async Task<byte[]> Portrait(string password,CancellationToken cancel){using var request=new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get,ServiceClient.Endpoint(ServiceClient.BaseUrl,"/api/admin/portrait"));request.Headers.Authorization=new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("admin:"+password)));using var response=await http.SendAsync(request,cancel);response.EnsureSuccessStatusCode();var bytes=await response.Content.ReadAsByteArrayAsync(cancel);if(bytes.Length>2000000)throw new AdminFailure("PORTRAIT_TOO_LARGE");return bytes;}
     internal Task<AdminActionResult> Action(string password,AdminAction action,CancellationToken cancel)=>Request<AdminActionResult>(
         (action.Data is null?"/api/admin/action":"/api/admin/features"),password,action,cancel);
-    internal Task<SettingsSnapshot> Settings(string password,string pet,CancellationToken cancel,string section="controls",string characterId="")=>Request<SettingsSnapshot>(
-        "/api/admin/settings?pet="+Uri.EscapeDataString(pet)+"&section="+Uri.EscapeDataString(section)+(characterId.Length>0?"&characterId="+Uri.EscapeDataString(characterId):""),password,null,cancel);
+    internal async Task<SettingsSnapshot> Settings(string password,string pet,CancellationToken cancel,string section="controls",string characterId="")
+    {
+        // The existing service's short settings response omits evidence and the full
+        // applied-integration list. Use its complete admin snapshot for these pages.
+        if(section=="task-evidence") {
+            var dashboard=await Dashboard(password,pet,cancel).ConfigureAwait(false);
+            if(dashboard.Selected?.Name!=pet)throw new AdminFailure("INVALID_RESPONSE");
+            return new(){Pet=pet,Section="tasks",ServerTimeUtc=dashboard.ServerTimeUtc,Settings=dashboard.Selected.Settings,Identity=dashboard.Identity,Controls=dashboard.Selected.Features};
+        }
+        var result=await Request<SettingsSnapshot>("/api/admin/settings?pet="+Uri.EscapeDataString(pet)+"&section="+Uri.EscapeDataString(section=="integrations"?"controls":section)+(characterId.Length>0?"&characterId="+Uri.EscapeDataString(characterId):""),password,null,cancel).ConfigureAwait(false);
+        if(section=="integrations"&&result.Controls?.ActiveIntegrationCommands is null) {
+            var dashboard=await Dashboard(password,pet,cancel).ConfigureAwait(false);
+            if(dashboard.Selected?.Name!=pet)throw new AdminFailure("INVALID_RESPONSE");
+            result.Controls!.ActiveIntegrationCommands=dashboard.Selected.Features.ActiveIntegrationCommands;
+        }
+        return result;
+    }
     internal Task<LiveReport> Live(string password,string pet,string viewerId,string action,CancellationToken cancel)=>Request<LiveReport>(
         "/api/admin/live",password,new {pet,viewerId,action},cancel);
     internal Task<ControlHistoryPage> ControlHistory(string password,string pet,string cursor,CancellationToken cancel)=>Request<ControlHistoryPage>("/api/admin/control-history?pet="+Uri.EscapeDataString(pet)+"&cursor="+Uri.EscapeDataString(cursor),password,null,cancel);
@@ -31,6 +46,7 @@ internal sealed class MasterPortalClient : IDisposable
         foreach(var (key,value) in new[]{("from",from),("to",to),("search",search),("cursor",cursor),("method",method)})if(value.Length>0)query+="&"+key+"="+Uri.EscapeDataString(value);
         return Request<HistoryPage>("/api/admin/history"+query,password,null,cancel);
     }
+    internal Task<System.Text.Json.JsonElement> Journal(string password,string pet,string query,bool analytics,CancellationToken cancel)=>Request<System.Text.Json.JsonElement>((analytics?"/api/admin/analytics":"/api/admin/journal")+"?pet="+Uri.EscapeDataString(pet)+query,password,null,cancel);
     private async Task<T> Request<T>(string route,string password,object? payload,CancellationToken cancel)
     {
         using var deadline=CancellationTokenSource.CreateLinkedTokenSource(cancel);

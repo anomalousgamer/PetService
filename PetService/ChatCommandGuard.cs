@@ -17,6 +17,7 @@ internal sealed unsafe class ChatCommandGuard : IDisposable
     private readonly IPluginLog log;
     private Hook<ShellCommandModule.Delegates.ExecuteCommandInner>? hook;
     private long lastNotice;
+    internal Func<bool>? Sleeping {get;set;}
     internal Func<DynamicSettings?>? SpeechSettings {get;set;}
     private bool transforming;
     public bool Available => hook is { IsEnabled: true, IsDisposed: false };
@@ -45,8 +46,8 @@ internal sealed unsafe class ChatCommandGuard : IDisposable
         bool allowed;
         try
         {
-            allowed = !reminderActive()
-                || (command != null && ChatCommandPolicy.Allows(command->ToString()));
+            allowed = Sleeping?.Invoke()!=true && (!reminderActive()
+                || (command != null && ChatCommandPolicy.Allows(command->ToString())));
         }
         catch (Exception exception)
         {
@@ -91,7 +92,7 @@ internal sealed unsafe class ChatCommandGuard : IDisposable
         lastNotice = Environment.TickCount64;
         try
         {
-            chat.PrintError("[Pet Service] Only chat messages and chat channel commands are available until you acknowledge or snooze.");
+            chat.PrintError("[Pet Service] Gameplay is bonded. Chat remains available outside Sleep.");
         }
         catch (Exception exception)
         {
