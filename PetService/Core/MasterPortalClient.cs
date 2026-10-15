@@ -73,5 +73,6 @@ internal sealed class MasterPortalClient : IDisposable
         }
         return JsonSerializer.Deserialize<T>(buffer.ToArray(),ServiceClient.Json) ?? throw new AdminFailure("INVALID_RESPONSE");
     }
+    internal Task<T> Comms<T>(string password,string pet,string op,object data,CancellationToken cancel)=>Request<T>("/api/admin/comms",password,new{pet,op,data},cancel);
     public void Dispose()=>http.Dispose();
 }

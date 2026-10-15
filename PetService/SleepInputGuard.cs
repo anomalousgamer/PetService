@@ -6,8 +6,8 @@ using Dalamud.Plugin.Services;
 
 namespace PetService;
 
-// Makes ImGui text editors read-only during Sleep, independent of plugin draw
-// order. Game/native chat sends are separately guarded by ChatCommandGuard.
+// Game/native chat sends are separately guarded by ChatCommandGuard. The
+// independent private chat window keeps its own text editors usable during Sleep.
 internal sealed unsafe class SleepInputGuard : IDisposable
 {
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -15,6 +15,8 @@ internal sealed unsafe class SleepInputGuard : IDisposable
     private Hook<InputText>? hook;
     private nint library;
     private readonly Func<bool> sleeping;
+    internal Func<bool>? DrawingPrivateChat {get;set;}
+    internal Func<bool>? PrivateChatFocused {get;set;}
     internal bool Available=>hook is {IsEnabled:true,IsDisposed:false};
     internal SleepInputGuard(IGameInteropProvider interop,Func<bool> sleeping,IPluginLog log)
     {
@@ -28,8 +30,10 @@ internal sealed unsafe class SleepInputGuard : IDisposable
     }
     private byte DrawText(byte* label,byte* hint,byte* buffer,int size,Vector2 dimensions,ImGuiInputTextFlags flags,nint callback,nint userData)
     {
-        if(!sleeping())return hook!.Original(label,hint,buffer,size,dimensions,flags,callback,userData);
-        var io=ImGui.GetIO();io.ClearInputCharacters();io.ClearInputKeys();
+        if(!sleeping()||DrawingPrivateChat?.Invoke()==true)return hook!.Original(label,hint,buffer,size,dimensions,flags,callback,userData);
+        // Another plugin may draw before or after our chat. Do not erase the
+        // shared ImGui input queue while the private chat owns keyboard focus.
+        if(PrivateChatFocused?.Invoke()!=true){var io=ImGui.GetIO();io.ClearInputCharacters();io.ClearInputKeys();}
         flags=(flags|ImGuiInputTextFlags.ReadOnly)&~(ImGuiInputTextFlags.EnterReturnsTrue|ImGuiInputTextFlags.CallbackEdit|ImGuiInputTextFlags.CallbackAlways|ImGuiInputTextFlags.CallbackCompletion|ImGuiInputTextFlags.CallbackHistory);
         hook!.Original(label,hint,buffer,size,dimensions,flags,callback,userData);
         return 0;

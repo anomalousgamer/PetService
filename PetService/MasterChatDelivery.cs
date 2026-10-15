@@ -25,7 +25,5 @@ internal static class MasterChatDelivery
     internal static void Print(Configuration configuration,string text)
     {
         Plugin.Chat.Print(new XivChatEntry{Type=configuration.MasterChatType=="system"?XivChatType.SystemMessage:XivChatType.Echo,Message=System.Text.RegularExpressions.Regex.IsMatch(configuration.MasterChatRgb??"","^#[0-9a-fA-F]{6}$")?RgbMessage(text,configuration.MasterChatRgb!,configuration.Features.Identity.Name):Message(text,configuration.MasterChatColour,configuration.Features.Identity.Name),Silent=true});
-        if(configuration.MasterChatSound)PlaySound();
     }
-    private static unsafe void PlaySound(){try{UIGlobals.PlayChatSoundEffect(1);}catch{}}
 }

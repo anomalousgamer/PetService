@@ -3,7 +3,7 @@
     "Author": "Anomaly",
     "Name": "Pet Service",
     "InternalName": "PetService",
-    "AssemblyVersion": "0.5.0.0",
+    "AssemblyVersion": "0.6.0.0",
     "Description": "A private companion for consensual pet/master play. Doors remember their keys; whispers and footsteps find their place. The pet keeps a local kill switch.",
     "ApplicableVersion": "any",
     "Tags": [
@@ -21,11 +21,11 @@
     "Punchline": "Consensual pet/master roleplay, messages, and shared routines.",
     "AcceptsFeedback": true,
     "RepoUrl": "https://github.com/anomalousgamer/PetService",
-    "Changelog": "A soft word may lay the day to rest; a small light always knows the way back. Old footsteps gather into pages, and every voice may choose its own shade.",
+    "Changelog": "• Several bells may share one ribbon, and some ribbons wait for a single dawn.\n• A letter may choose its hour, its doorway, and the answers waiting at its seal.\n• Two little jars remember every pebble, and treasures wait for a nod.\n• A borrowed voice may soften, tumble, or learn the syllables of another song.\n• Both hands may read tomorrow's ribbons; only one may move them.\n• Many little rooms remember their voices and colors; their letters stay sealed between two doors.\n• An empty music box waits for the hand that chooses its songs and the moments they may play.",
     "IsHide": false,
-    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.5.0.0/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.5.0.0/latest.zip",
-    "LastUpdate": 1791435545,
+    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.6.0.0/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.6.0.0/latest.zip",
+    "LastUpdate": 1792101835,
     "IconUrl": "https://raw.githubusercontent.com/anomalousgamer/PetService/main/images/icon.png"
   }
 ]

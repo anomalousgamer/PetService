@@ -11,11 +11,13 @@ internal sealed class SettingsWindow : Window,IDisposable
     private bool selectCharacters;
     private bool selectContact;
     internal void OpenContact(){selectContact=true;IsOpen=true;}
-    private readonly MasterPortalView master=new();
+    private readonly MasterPortalView master;
+    private readonly V6PetView points;
+    private readonly PetCalendarView calendar;
     internal bool EditingText {get;private set;}
     internal SettingsWindow(Plugin plugin):base("Pet Service")
     {
-        this.plugin=plugin;features=new(plugin);SizeConstraints=new(){MinimumSize=new Vector2(650,490),MaximumSize=new(float.MaxValue)};
+        this.plugin=plugin;master=new(plugin);features=new(plugin);points=new(plugin);calendar=new(plugin);SizeConstraints=new(){MinimumSize=new Vector2(650,490),MaximumSize=new(float.MaxValue)};
         Size=new Vector2(850,690);SizeCondition=ImGuiCond.FirstUseEver;
     }
     public override void PreDraw(){Style.ApplyTheme(plugin.SharingAllowed?plugin.Configuration.Features.Identity.Theme:"#baa0ff");Style.Push();}
@@ -29,7 +31,7 @@ internal sealed class SettingsWindow : Window,IDisposable
     private void DrawContent()
     {
         EditingText=false;
-        Style.Title("PET SERVICE","Pet and Master controls · 0.5.0.0");
+        Style.Title("PET SERVICE","Pet and Master controls · 0.6.0.0");
         ImGui.BeginChild("PetServiceMain",new Vector2(0,-85),false);
         var masterShown=false;
         if(ImGui.BeginTabBar("roles")) {
@@ -51,10 +53,11 @@ internal sealed class SettingsWindow : Window,IDisposable
         if(paused){Style.Title("Character access paused","This character is not enabled for PetService.");ImGui.TextWrapped("Sharing and "+plugin.MasterName+" controls are paused. To allow access, enable this character on Pet → Characters.");if(ImGui.Button("Open Characters",new Vector2(-1,42)))selectCharacters=true;ImGui.Spacing();}
         if(!ImGui.BeginTabBar("petpages"))return;
         if(!paused && ImGui.BeginTabItem("Home")) {
+            if(ImGui.Button("Open private RP chat"))plugin.PrivateChat.OpenPet();
             features.Home();if(plugin.LockRequested)Style.Metric("Gameplay",plugin.Configuration.Features.Lock?.State??"Queued","petlock");ImGui.Spacing();Style.Title(plugin.IsPaired?plugin.Configuration.PetName:"Welcome home",plugin.ServiceStatus);
             Style.Metric("Your connection",plugin.KillSwitchOn?"Paused":plugin.IsPaired?"Paired":"Setup needed","petconnection");
             ImGui.Spacing();
-            Style.Metric("Your voice",plugin.KillSwitchOn || !plugin.Configuration.Dynamic.GarbleEnabled?"Natural":"Gagged · "+plugin.Configuration.Dynamic.GarbleStyle,"petvoice");
+            Style.Metric("Your voice",plugin.KillSwitchOn || !plugin.EffectiveSpeech.GarbleEnabled?"Natural":"Gagged · "+plugin.EffectiveSpeech.GarbleStyle,"petvoice");
             ImGui.TextWrapped(plugin.KillSwitchOn?"You choose when to resume. "+plugin.MasterName+" cannot turn your kill switch off.":"Use Contact to send a little signal home. Use Setup to manage your pairing.");
             ImGui.EndTabItem();
         }
@@ -72,6 +75,9 @@ internal sealed class SettingsWindow : Window,IDisposable
             ImGui.TextWrapped(plugin.CallCooldownSeconds>0?$"Contact queued. Next request in {plugin.CallCooldownSeconds}s.":"Requests are saved locally, then delivered through Discord when connected.");
             ImGui.EndTabItem();
         }
+        if(!paused&&ImGui.BeginTabItem("Points")){points.Draw();EditingText|=points.EditingText;ImGui.EndTabItem();}
+        if(!paused&&ImGui.BeginTabItem("Routines")){points.Routines();EditingText|=points.EditingText;ImGui.EndTabItem();}
+        if(!paused&&ImGui.BeginTabItem("Calendar")){calendar.Draw();ImGui.EndTabItem();}
         if(ImGui.BeginTabItem("Characters",selectCharacters?ImGuiTabItemFlags.SetSelected:0)){selectCharacters=false;features.Characters();ImGui.EndTabItem();}
         if(!paused && ImGui.BeginTabItem("Tasks")){features.Tasks();EditingText|=features.EditingText;ImGui.EndTabItem();}
         if(ImGui.BeginTabItem("Setup")) {
@@ -107,7 +113,8 @@ internal sealed class SettingsWindow : Window,IDisposable
             plugin.Mutate(c=>c.MasterChatRgb=chosen);
         }
         if(ImGui.Button("Reset chat color"))plugin.Mutate(c=>{c.MasterChatRgb="";c.MasterChatColour=0;});
-        var sound=plugin.Configuration.MasterChatSound;if(ImGui.Checkbox("Play a notification sound",ref sound))plugin.Mutate(c=>c.MasterChatSound=sound);
+        var volume=plugin.Configuration.RemoteSoundVolume*100;if(ImGui.SliderFloat("Master sound volume",ref volume,10,100,"%.0f%%"))plugin.Mutate(c=>c.RemoteSoundVolume=volume/100);
+        ImGui.BeginDisabled(!plugin.Sounds.CanPreview);if(ImGui.Button("Preview uploaded sound"))plugin.Sounds.Preview();ImGui.EndDisabled();
         if(ImGui.Button("Preview in chat"))MasterChatDelivery.Print(plugin.Configuration,"A little message from your "+plugin.MasterName+".");
         ImGui.Spacing();
     }

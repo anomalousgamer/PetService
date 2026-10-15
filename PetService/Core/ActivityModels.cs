@@ -14,6 +14,8 @@ public sealed class ActivityRecord
 }
 public sealed class DynamicSettings
 {
+    [System.Text.Json.Serialization.JsonIgnore][Newtonsoft.Json.JsonIgnore]public string CustomSyllables{get;set;}="";
+    [System.Text.Json.Serialization.JsonIgnore][Newtonsoft.Json.JsonIgnore]public List<string> ExcludedChannels{get;set;}=[];
     public bool GarbleEnabled { get; set; }
     public int GarbleStrength { get; set; }=100;
     public string GarbleStyle { get; set; }="muffled";

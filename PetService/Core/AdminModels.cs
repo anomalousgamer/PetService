@@ -88,6 +88,7 @@ internal sealed record AdminAction
 }
 internal sealed class AdminActionResult
 {
+    public System.Text.Json.JsonElement? Data{get;set;}
     public string Action { get; set; }="";
     public string Pet { get; set; }="";
     public string? Code { get; set; }

@@ -4,6 +4,15 @@ internal static class ChatCommandPolicy
 {
     private static readonly HashSet<string> ChatCommands = BuildCommands();
 
+    public static bool AllowsDuringSleep(string text)
+    {
+        if (text.IndexOfAny(['\r', '\n', '\0']) >= 0)
+            return false;
+        var command = text.Trim();
+        return command.Equals("/toh chat", StringComparison.OrdinalIgnoreCase)
+            || command.Equals("/petservice chat", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static bool Allows(string text)
     {
         // A pasted second line must not become a second command.

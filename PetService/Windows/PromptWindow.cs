@@ -12,7 +12,7 @@ internal sealed class PromptWindow : Window
     private string? lastPromptId;
     private bool wasVisible,editingPrompt,mouseOverChat,drawFailed;
     private long appearedAt;
-    private string reply="";
+    private string reply="",explanation="";private bool openReply;
     private int snoozeMinutes=SnoozePolicy.DefaultMinutes;
     private const ImGuiWindowFlags PromptFlags=ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove
         | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoSavedSettings
@@ -41,9 +41,9 @@ internal sealed class PromptWindow : Window
             ImGuiP.ClearActiveID();editingPrompt=false;
         }
         var prompt=plugin.CurrentPrompt;
-        if(!wasVisible || prompt?.Id!=lastPromptId) {
+        if(!wasVisible || (prompt?.Id+":"+prompt?.Responses?.Revision)!=lastPromptId) {
             appearedAt=Environment.TickCount64;reply="";snoozeMinutes=SnoozePolicy.DefaultMinutes;
-            lastPromptId=prompt?.Id;editingPrompt=false;drawFailed=false;
+            lastPromptId=prompt?.Id+":"+prompt?.Responses?.Revision;openReply=false;explanation="";editingPrompt=false;drawFailed=false;
             // Keep existing game-chat focus. A prompt appearing must not take it.
         }
         wasVisible=true;
@@ -96,7 +96,7 @@ internal sealed class PromptWindow : Window
                 ImGui.SetWindowFontScale(1.35f);ImGui.PushTextWrapPos(0);
                 ImGui.TextUnformatted(prompt.Kind=="reminder" ? prompt.Label : prompt.Text);
                 ImGui.PopTextWrapPos();ImGui.SetWindowFontScale(1f);ImGui.Spacing();
-                if(prompt.Kind=="message") {
+                if(prompt.Kind=="message"&&prompt.Responses is null) {
                     var options=prompt.Choices ?? [];
                     for(var i=0;i<Math.Min(options.Count,32);i++) {
                         ImGui.PushID(i);ImGui.BeginDisabled(!armed);
@@ -119,19 +119,21 @@ internal sealed class PromptWindow : Window
                         ImGui.EndDisabled();
                     }
                 }
-                if(prompt.Kind=="reminder" && prompt.Responses is { } configured) {
+                if(prompt.Responses is { } configured) {
                     foreach(var option in configured.Options) {
                         ImGui.PushID(option.Id);
-                        if(option.Action=="snooze" && option.Minutes is not >0) {ImGui.SliderInt("Minutes",ref snoozeMinutes,1,10);snoozeMinutes=Math.Clamp(snoozeMinutes,1,10);}
-                        ImGui.BeginDisabled(!armed);
+                        if(option.Action=="snooze" && option.Minutes is not >0) {ImGui.SliderInt("Minutes",ref snoozeMinutes,prompt.Policy?.SnoozeMin??1,prompt.Policy?.SnoozeMax??10);snoozeMinutes=Math.Clamp(snoozeMinutes,prompt.Policy?.SnoozeMin??1,prompt.Policy?.SnoozeMax??10);if(prompt.Policy is { } policy)foreach(var preset in policy.SnoozePresets){if(ImGui.SmallButton(preset+" min"))snoozeMinutes=preset;ImGui.SameLine();}ImGui.NewLine();}
+                        ImGui.BeginDisabled(!armed||(option.Action is "snooze" or "random-snooze")&&prompt.Advanced&&prompt.Policy!.SnoozeLimit>0&&plugin.CurrentAdvanced!.SnoozeCount>=prompt.Policy.SnoozeLimit);
                         if(Style.LiteralButton(option.Label,"dailyoption",new Vector2(-1,34*scale))) {
-                            if(option.Action is "snooze" or "random-snooze")plugin.Choose("snooze",minutes:option.Action=="random-snooze"?System.Security.Cryptography.RandomNumberGenerator.GetInt32(1,11):option.Minutes is >0?option.Minutes.Value:snoozeMinutes,optionId:option.Id,snoozeMode:option.Action);
-                            else plugin.Choose("response",optionId:option.Id);
+                            if(option.Action=="open-reply")openReply=true;
+                            else if(option.Action is "snooze" or "random-snooze")plugin.Choose("snooze",minutes:option.Action=="random-snooze"?System.Security.Cryptography.RandomNumberGenerator.GetInt32(1,11):option.Minutes is >0?option.Minutes.Value:snoozeMinutes,optionId:option.Id,snoozeMode:option.Action);
+                            else {plugin.Choose("response",optionId:option.Id);if(option.Action=="keep-open")explanation=option.Text;}
                         }
                         ImGui.EndDisabled();ImGui.PopID();
                     }
-                    if(configured.AllowReply){ImGui.InputTextMultiline("##DailyReply",ref reply,1000,new Vector2(-1,70*scale));editingPrompt=ImGui.IsItemActive();ImGui.BeginDisabled(!armed||string.IsNullOrWhiteSpace(reply));if(ImGui.Button("Send reply",new Vector2(-1,32*scale)))plugin.Choose("reply",reply);ImGui.EndDisabled();}
-                } else if(prompt.Kind=="message") {
+                    if(explanation.Length>0)ImGui.TextWrapped(explanation);
+                    if(configured.AllowReply||openReply){ImGui.InputTextMultiline("##DailyReply",ref reply,1000,new Vector2(-1,70*scale));editingPrompt=ImGui.IsItemActive();ImGui.BeginDisabled(!armed||string.IsNullOrWhiteSpace(reply));if(ImGui.Button("Send reply",new Vector2(-1,32*scale)))plugin.Choose("reply",reply);ImGui.EndDisabled();}
+                } else if(prompt.Kind=="message"&&prompt.Responses is null) {
                     ImGui.Spacing();ImGui.SetNextItemWidth(125*scale);ImGui.InputInt("Snooze minutes",ref snoozeMinutes,1,5);editingPrompt|=ImGui.IsItemActive();
                     ImGui.BeginDisabled(!armed || !SnoozePolicy.IsValid(snoozeMinutes));if(ImGui.Button($"Snooze {snoozeMinutes} minutes",new Vector2(-1,32*scale)))plugin.Choose("snooze",minutes:snoozeMinutes);ImGui.EndDisabled();
                 }

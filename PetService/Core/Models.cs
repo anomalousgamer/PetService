@@ -12,6 +12,8 @@ public sealed class Schedule
 }
 public sealed class Prompt
 {
+    [System.Text.Json.Serialization.JsonIgnore][Newtonsoft.Json.JsonIgnore]public bool Advanced{get;set;}
+    [System.Text.Json.Serialization.JsonIgnore][Newtonsoft.Json.JsonIgnore]public InteractionPolicy? Policy{get;set;}
     public ResponseOptions? Responses {get;set;}
     public string Id { get; set; } = "";
     public string Kind { get; set; } = "";

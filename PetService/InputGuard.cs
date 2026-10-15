@@ -29,6 +29,7 @@ internal sealed unsafe class InputGuard(IKeyState keys, IGamepadState gamepad,
     private bool disabledForSession;
     private bool editingReminder;
     private long lastAutorunStopAttempt;
+    internal Func<bool>? PrivateChatFocused {get;set;}
     public bool HasFailed => disabledForSession;
     public bool AutorunStopFailed { get; private set; }
     public bool IsCapturing => active && !disabledForSession
@@ -85,7 +86,7 @@ internal sealed unsafe class InputGuard(IKeyState keys, IGamepadState gamepad,
         // Dalamud clears all game keys while WantTextInput is true. Only our
         // own text field should set it when native chat access is available.
         io.WantTextInput = asleep || editingReminder || chatTwo.Focused || !chatAvailable;
-        if(asleep){io.ClearInputCharacters();io.ClearInputKeys();}
+        if(asleep&&PrivateChatFocused?.Invoke()!=true){io.ClearInputCharacters();io.ClearInputKeys();}
         lastRendered = Environment.TickCount64;
         SuppressGameplay();
     }

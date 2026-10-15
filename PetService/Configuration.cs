@@ -4,6 +4,21 @@ namespace PetService;
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
+    public Dictionary<string,string> PrivateChatVaults{get;set;}=[];
+    public bool AudioMigrated{get;set;}
+    public List<string> SoundPromptReturns{get;set;}=[];
+    public List<AudioEvent> AudioEvents{get;set;}=[];
+    public List<AudioResult> AudioResults{get;set;}=[];
+    public List<string> SeenSoundRequests{get;set;}=[];
+    public float RemoteSoundVolume{get;set;}=0.5f;
+    public Vector2Chat ChatWindow{get;set;}=new();
+    public List<AdvancedEvent> V6Outbox{get;set;}=[];
+    public HashSet<string> V6ChatIds{get;set;}=[];
+    public HashSet<string> PointNoticeIds{get;set;}=[];
+    public HashSet<string> RedemptionNoticeIds{get;set;}=[];
+    public bool PointChatNotifications{get;set;}=true;
+    public bool PointToastNotifications{get;set;}=true;
+
     public List<string> EndedSleepIds {get;set;}=[];
     public string MasterChatRgb {get;set;}="";
     public List<CharacterAccess> Characters {get;set;}=[];
@@ -44,3 +59,5 @@ public sealed class Configuration : IPluginConfiguration
     public bool MasterChatSound {get;set;}
     public List<string> DisplayedChatIds {get;set;}=[];
 }
+
+[Serializable]public sealed class Vector2Chat{public float Width{get;set;}=780;public float Height{get;set;}=650;public float Composer{get;set;}=120;}

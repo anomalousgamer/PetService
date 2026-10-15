@@ -33,7 +33,7 @@ internal sealed class SleepController(Plugin plugin,Func<string?>? applyEmote=nu
         }
         if(Active){
             if(!inputReady || Environment.TickCount64-started>2000&&!plugin.InputGuardCapturing){End("Sleep input capture is unavailable; local restrictions ended.","failed");return;}
-            if(!applied&&plugin.InputGuardCapturing){applied=true;Report(activeId,"applied","Sleep applied; gameplay and outgoing chat are blocked.");}
+            if(!applied&&plugin.InputGuardCapturing){applied=true;Report(activeId,"applied","Sleep applied; gameplay and game chat are blocked. Private RP chat remains available.");}
             return;
         }
         if(!requested)return;

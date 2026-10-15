@@ -34,6 +34,13 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static INotificationManager Notifications {get;private set;}=null!;
     [PluginService] internal static ITextureProvider Textures {get;private set;}=null!;
     private readonly IntegrationBridge integrations;
+    internal readonly V6Controller V6;
+    internal readonly PrivateChatWindow PrivateChat;
+    internal bool DrawingPrivateChat {get;set;}
+    internal bool PrivateChatFocused=>PrivateChat is not null&&PrivateChat.IsOpen&&PrivateChat.EditingText&&!PrivateChat.Session.Paused;
+    internal readonly RemoteSounds Sounds;
+    internal void RequestV6Sync()=>nextSync=0;
+    internal DynamicSettings EffectiveSpeech=>V6.EffectiveSpeech();
     private Task<CredentialState>? credentialTask;
     private string credentialToken="";
     private string observedCharacter="";
@@ -61,7 +68,7 @@ public sealed class Plugin : IDalamudPlugin
     private static void ArchiveRecovery(Configuration config){if(config.Recovery.Count<=5000)return;Directory.CreateDirectory(RecoveryDirectory);var overflow=config.Recovery.Take(config.Recovery.Count-5000).ToList();foreach(var record in overflow){var json=JsonSerializer.Serialize(record,ServiceClient.Json);var hash=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json))).ToLowerInvariant();var file=Path.Combine(RecoveryDirectory,hash+".json");File.WriteAllText(file,json);}config.Recovery.RemoveRange(0,overflow.Count);}
     internal int ArchivedRecoveryCount {get{try{return Directory.Exists(RecoveryDirectory)?Directory.EnumerateFiles(RecoveryDirectory,"*.json").Count():0;}catch{return 0;}}}
     internal void RetryRecovery(){if(!SharingAllowed)return;var archives=new List<(string Path,RecoveryRecord Record)>();try{if(Directory.Exists(RecoveryDirectory))foreach(var file in Directory.EnumerateFiles(RecoveryDirectory,"*.json").Take(100)){var r=JsonSerializer.Deserialize<RecoveryRecord>(File.ReadAllText(file),ServiceClient.Json);if(r is not null && r.PetId==Configuration.PetId)archives.Add((file,r));}}catch{}
-        var saved=Mutate(c=>{foreach(var entry in archives)if(!c.Recovery.Any(r=>r.Id==entry.Record.Id&&r.Payload==entry.Record.Payload))c.Recovery.Add(entry.Record);foreach(var r in c.Recovery.Where(x=>x.PetId==c.PetId).ToList())try{if(r.Kind=="activity"){var e=JsonSerializer.Deserialize<ActivityRecord>(r.Payload,ServiceClient.Json)!;if(!c.Characters.Any(x=>x.Id==e.CharacterId&&x.Allowed))continue;if(!c.ActivityOutbox.Any(x=>x.Id==e.Id))c.ActivityOutbox.Add(e);}else if(r.Kind=="reply"){var e=JsonSerializer.Deserialize<Choice>(r.Payload,ServiceClient.Json)!;if(!c.Outbox.Any(x=>x.Id==e.Id))c.Outbox.Add(e);}else if(r.Kind=="control-result"){var e=JsonSerializer.Deserialize<FeatureResult>(r.Payload,ServiceClient.Json)!;if(e.AtUtc is not null)e.AtUtc=LocalState.Stamp(LocalState.Parse(e.AtUtc));if(!c.FeatureResults.Any(x=>x.Id==e.Id&&x.State==e.State))c.FeatureResults.Add(e);}else if(r.Kind=="task"){var e=JsonSerializer.Deserialize<TaskEvent>(r.Payload,ServiceClient.Json)!;if(!c.TaskEvents.Any(x=>x.Id==e.Id))c.TaskEvents.Add(e);}else continue;c.Recovery.Remove(r);}catch{}});if(saved)foreach(var entry in archives.Where(a=>!Configuration.Recovery.Any(r=>r.Id==a.Record.Id)))try{File.Delete(entry.Path);}catch{}nextSync=0;}
+        var saved=Mutate(c=>{foreach(var entry in archives)if(!c.Recovery.Any(r=>r.Id==entry.Record.Id&&r.Payload==entry.Record.Payload))c.Recovery.Add(entry.Record);foreach(var r in c.Recovery.Where(x=>x.PetId==c.PetId).ToList())try{if(r.Kind=="activity"){var e=JsonSerializer.Deserialize<ActivityRecord>(r.Payload,ServiceClient.Json)!;if(!c.Characters.Any(x=>x.Id==e.CharacterId&&x.Allowed))continue;if(!c.ActivityOutbox.Any(x=>x.Id==e.Id))c.ActivityOutbox.Add(e);}else if(r.Kind=="reply"){var e=JsonSerializer.Deserialize<Choice>(r.Payload,ServiceClient.Json)!;if(!c.Outbox.Any(x=>x.Id==e.Id))c.Outbox.Add(e);}else if(r.Kind=="control-result"){var e=JsonSerializer.Deserialize<FeatureResult>(r.Payload,ServiceClient.Json)!;if(e.AtUtc is not null)e.AtUtc=LocalState.Stamp(LocalState.Parse(e.AtUtc));if(!c.FeatureResults.Any(x=>x.Id==e.Id&&x.State==e.State))c.FeatureResults.Add(e);}else if(r.Kind=="interaction"){var e=JsonSerializer.Deserialize<AdvancedEvent>(r.Payload,ServiceClient.Json)!;if(!c.V6Outbox.Any(x=>x.Id==e.Id))c.V6Outbox.Add(e);}else if(r.Kind=="task"){var e=JsonSerializer.Deserialize<TaskEvent>(r.Payload,ServiceClient.Json)!;if(!c.TaskEvents.Any(x=>x.Id==e.Id))c.TaskEvents.Add(e);}else continue;c.Recovery.Remove(r);}catch{}});if(saved)foreach(var entry in archives.Where(a=>!Configuration.Recovery.Any(r=>r.Id==a.Record.Id)))try{File.Delete(entry.Path);}catch{}nextSync=0;}
     private readonly ActivityRecorder recorder;
     private readonly TravelRecorder travel;
     private readonly UpdateNotifications updates;
@@ -120,9 +127,16 @@ public sealed class Plugin : IDalamudPlugin
     internal bool Ready => ClientState.IsLoggedIn && Player.IsLoaded && Objects.LocalPlayer is not null
         && !Condition[ConditionFlag.BetweenAreas] && !Condition[ConditionFlag.BetweenAreas51];
     internal DateTimeOffset Now => DateTimeOffset.UtcNow.AddMilliseconds(Configuration.ClockOffsetMilliseconds);
-    internal Prompt? CurrentPrompt => SharingAllowed && Ready && !localRelease && !Sleeping
-        ? LocalState.Pending(Configuration.Prompts,Now) : null;
-    internal bool HasVisibleReminder => CurrentPrompt is not null;
+    internal AdvancedPrompt? CurrentAdvanced=>SharingAllowed&&Ready&&!localRelease&&!Sleeping?V6Local.Pending(Configuration.Features.V6,Now,Observe()):null;
+    internal Prompt? CurrentPrompt {
+        get {
+            if(!SharingAllowed||!Ready||localRelease||Sleeping)return null;
+            var old=LocalState.Pending(Configuration.Prompts,Now);var advanced=CurrentAdvanced;
+            if(advanced is null||old is not null&&advanced.Policy.Priority==0&&string.CompareOrdinal(old.DueAtUtc,advanced.SendAtUtc)<=0)return old;
+            return new(){Id=advanced.Id,Kind=advanced.RoutineId is null?"message":"reminder",Label=advanced.Title,Text=advanced.Text,DueAtUtc=advanced.SendAtUtc,Responses=advanced.Responses,AllowReply=advanced.Responses.AllowReply||advanced.Responses.Options.Any(o=>o.Action=="open-reply"),DisplayedAtUtc=advanced.DisplayedAtUtc,Advanced=true,Policy=advanced.Policy};
+        }
+    }
+    internal bool HasVisibleReminder=>CurrentPrompt is not null;
     internal bool InputCaptureUnavailable => input.HasFailed;
     internal bool MovementGuardUnavailable => !movement.Available;
     internal bool AutorunStopFailed => input.AutorunStopFailed;
@@ -132,10 +146,12 @@ public sealed class Plugin : IDalamudPlugin
     {
         var savedConfiguration=PluginInterface.GetPluginConfig() as Configuration;
         Configuration=savedConfiguration ?? new();
-        Configuration.EndedSleepIds??=[];Configuration.Characters??=[];Configuration.Features??=new();Configuration.FeatureResults??=[];Configuration.TaskEvents??=[];Configuration.Recovery??=[];
+        Configuration.V6Outbox??=[];Configuration.V6ChatIds??=[];Configuration.PointNoticeIds??=[];Configuration.RedemptionNoticeIds??=[];Configuration.EndedSleepIds??=[];Configuration.Characters??=[];Configuration.Features??=new();Configuration.Features.V6??=new();Configuration.FeatureResults??=[];Configuration.TaskEvents??=[];Configuration.Recovery??=[];
         Configuration.ManagedTitles??=[];Configuration.PreviousTitles??=[];Configuration.ManagedMoodles??=[];Configuration.IntegrationLeases??=[];Configuration.IntegrationCleanupCharacters??=[];
         Configuration.Reminders ??= []; Configuration.Prompts ??= []; Configuration.Outbox ??= [];
         Configuration.SafetyOutbox ??= [];
+        Configuration.PrivateChatVaults??=[];Configuration.AudioResults??=[];Configuration.AudioEvents??=[];Configuration.SoundPromptReturns??=[];Configuration.SeenSoundRequests??=[];Configuration.ChatWindow??=new();
+        if(!Configuration.AudioMigrated)Mutate(c=>{c.MasterChatSound=false;c.AudioMigrated=true;});
         Configuration.DisplayedChatIds ??=[];
         Configuration.ActivityOutbox ??=[];Configuration.Dynamic ??=new();
         Configuration.Dynamic.NormalizeContacts();
@@ -150,7 +166,7 @@ public sealed class Plugin : IDalamudPlugin
         if(KillSwitchOn)ServiceStatus=$"Kill switch is on. {MasterName} input and status sharing are paused.";
         else if(Configuration.DeviceToken.Length>0 && !ServiceClient.MatchesBundledService(Configuration.ServiceUrl))
             ServiceStatus="This pairing belongs to a different service. Request a new pairing code to connect.";
-        nativeChat=new(GameGui,Log);chatTwo=new(PluginInterface);sleep=new(this);sleepInput=new(Interop,()=>Sleeping,Log);
+        V6=new(this);nativeChat=new(GameGui,Log);chatTwo=new(PluginInterface);sleep=new(this);sleepInput=new(Interop,()=>Sleeping,Log);
         chatCommands=new(Interop,()=>GuardRequested && input is not null && input.IsCapturing,Chat,Log);
         chatCommands.Sleeping=()=>Sleeping;
         chatCommands.SpeechSettings=()=>SharingAllowed && Ready ? Configuration.Dynamic : null;
@@ -158,14 +174,18 @@ public sealed class Plugin : IDalamudPlugin
         changes=new(this);windows.AddWindow(changes);
         movement=new(Interop,()=>GuardRequested && input is not null && input.IsCapturing,Log);
         input=new(KeyState,Gamepad,nativeChat,chatCommands,movement,chatTwo,()=>Sleeping,Log);
+        PrivateChat=new(this);Sounds=new(this);windows.AddWindow(PrivateChat);
+        sleepInput.DrawingPrivateChat=()=>DrawingPrivateChat;
+        sleepInput.PrivateChatFocused=()=>PrivateChatFocused;
+        input.PrivateChatFocused=()=>PrivateChatFocused;
         settings=new(this); windows.AddWindow(settings); windows.AddWindow(new PromptWindow(this));
-        killConfirmation=new(this); windows.AddWindow(killConfirmation);windows.AddWindow(new SleepWindow(this));
+        killConfirmation=new(this); windows.AddWindow(killConfirmation);windows.AddWindow(new SleepWindow(this));windows.AddWindow(new PointToastWindow(this){IsOpen=true});
         var ui=PluginInterface.UiBuilder;
         ui.DisableAutomaticUiHide=true;ui.DisableUserUiHide=true;ui.DisableCutsceneUiHide=true;ui.DisableGposeUiHide=true;
         ui.Draw+=Draw;ui.OpenConfigUi+=OpenSettings;ui.OpenMainUi+=OpenSettings;
         ClientState.Login+=OnLogin; Framework.Update+=Update;
         Commands.AddHandler("/petservice",new CommandInfo(Command) {HelpMessage="Open Pet/Master pages. /petservice off: confirm kill switch. /petservice on: resume. /petservice release: safe mode for this login. /petservice call: open Contact."});
-        Commands.AddHandler("/toh",new CommandInfo(Command){HelpMessage="Open Pet Service. /toh call, off, on, release, changes, checkupdates."});
+        Commands.AddHandler("/toh",new CommandInfo(Command){HelpMessage="Open Pet Service. /toh chat, call, off, on, release, changes, checkupdates."});
         previousLogin=ClientState.IsLoggedIn;
         if(previousLogin && SharingAllowed)StartSession("first-observed");
     }
@@ -176,6 +196,7 @@ public sealed class Plugin : IDalamudPlugin
     private void Command(string command,string args)
     {
         switch(args.Trim().ToLowerInvariant()) {
+            case "chat":PrivateChat.OpenDefault();break;
             case "changes":changes.IsOpen=true;break;
             case "checkupdates":updates.CheckNow();break;
             case "off":SetEnabled(false);break;
@@ -261,12 +282,20 @@ public sealed class Plugin : IDalamudPlugin
         if(NetworkBusy)return;
         sleep.End("Device unpaired.");integrations.Release();
         recorder.Stop("device unpaired");
-        if(Mutate(c=>{c.DisplayedChatIds.Clear();c.ActivityOutbox.Clear();c.Dynamic=new();c.ServiceUrl="";c.DeviceToken="";c.PetId="";c.PetName="";c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.SafetyOutbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;c.Revoked=false;}))
+        if(Mutate(c=>{c.V6Outbox.Clear();c.V6ChatIds.Clear();c.PointNoticeIds.Clear();c.RedemptionNoticeIds.Clear();c.DisplayedChatIds.Clear();c.ActivityOutbox.Clear();c.Features=new();c.FeatureResults.Clear();c.TaskEvents.Clear();c.Dynamic=new();c.ServiceUrl="";c.DeviceToken="";c.PetId="";c.PetName="";c.Reminders.Clear();c.Prompts.Clear();c.Outbox.Clear();c.SafetyOutbox.Clear();c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;c.Revoked=false;}))
         {recorder.ClearPairingState();input.Release();ServiceStatus="Unpaired. Request a new pairing code to reconnect.";}
     }
     internal void Choose(string action,string? reply=null,int? minutes=null,int? optionIndex=null,string? optionId=null,string? snoozeMode=null)
     {
         var prompt=CurrentPrompt;if(prompt is null)return;
+        if(prompt.Advanced&&CurrentAdvanced is { } advanced) {
+            var option=advanced.Responses.Options.FirstOrDefault(o=>o.Id==optionId);
+            if(action=="snooze"&&(option is null||option.Action is not("snooze" or "random-snooze")||minutes is null||minutes<(option.Action=="random-snooze"?1:advanced.Policy.SnoozeMin)||minutes>(option.Action=="random-snooze"?10:advanced.Policy.SnoozeMax)||advanced.Policy.SnoozeLimit>0&&advanced.SnoozeCount>=advanced.Policy.SnoozeLimit))return;
+            if(action=="reply"&&(!prompt.AllowReply||string.IsNullOrWhiteSpace(reply)))return;
+            if(action=="response"&&option is null)return;
+            V6.Queue(new(){PromptId=advanced.Id,Revision=advanced.Revision,Action=action,OptionId=optionId,Minutes=minutes,Reply=reply});
+            if(action=="snooze")Chat.Print(option?.Action=="random-snooze"?"Pet Service: Reminder snoozed.":"Pet Service: Snoozed for "+minutes+" minutes.");return;
+        }
         if(action=="snooze" && !SnoozePolicy.IsValid(minutes))return;
         if(action=="choice" && !ReplyChoicePolicy.Allows(prompt,optionIndex))return;
         if(action=="reply" && (!prompt.AllowReply || string.IsNullOrWhiteSpace(reply)))return;
@@ -283,10 +312,11 @@ public sealed class Plugin : IDalamudPlugin
     {
         var prompt=CurrentPrompt;if(prompt is null || prompt.DisplayedAtUtc is not null || Environment.TickCount64<nextDisplayedAttempt)return;
         nextDisplayedAttempt=Environment.TickCount64+5000;
+        if(prompt.Advanced&&CurrentAdvanced is { } advanced){V6.Queue(new(){PromptId=advanced.Id,Revision=advanced.Revision,Action="displayed"});return;}
         var choice=new Choice{ResponseRevision=prompt.Responses?.Revision,OccurrenceId=prompt.Id,Action="displayed",ClientAtUtc=LocalState.Stamp(Now)};
         Mutate(c=>{LocalState.Apply(c.Prompts.Single(p=>p.Id==prompt.Id),choice);c.Outbox.Add(choice);});
     }
-    private Observation Observe()
+    internal Observation Observe()
     {
         bool logged=ClientState.IsLoggedIn, ready=Ready;
         var zone=TimeZoneInfo.Local.Id;
@@ -334,13 +364,13 @@ public sealed class Plugin : IDalamudPlugin
             previousLogin=logged;
             TrackCharacter();
             CompleteNetwork();
-            integrations.Update();chatTwo.Update();sleep.Update(GuardAvailable && sleepInput.Available);
+            integrations.Update();chatTwo.Update();V6.Update();sleep.Update(GuardAvailable && sleepInput.Available);Sounds.Update();if(!PrivateChat.IsOpen)PrivateChat.Session.Tick(false);
             if(SharingAllowed && Ready && inventoryDirty && Environment.TickCount64>=inventoryAfter)try{pendingInventory=InventoryReader.Capture(this);inventoryDirty=false;}catch{inventoryAfter=Environment.TickCount64+15000;}
             UpdateLockResult();
             recorder.Update(Observe);travel.Update(Observe);updates.Update();
             if(Ready && !changesShown) {
                 if(changesEligible==0)changesEligible=Environment.TickCount64+3000;
-                if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.5.0.0")changes.IsOpen=true;}
+                if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.6.0.0")changes.IsOpen=true;}
             } else if(!Ready)changesEligible=0;
             // Only explicit safety notices use this route. It carries no observation
             // and remains usable while the kill switch pauses normal synchronization.
@@ -375,7 +405,7 @@ public sealed class Plugin : IDalamudPlugin
                 submittedResults=SharingAllowed?JsonSerializer.Deserialize<List<FeatureResult>>(JsonSerializer.Serialize(Configuration.FeatureResults.Take(100),ServiceClient.Json),ServiceClient.Json)!:[];
                 syncTask=service.Sync(Configuration.DeviceToken,submittedObservation,batch,activity,submittedReportRequestId,
                     new{revision=Configuration.AccessRevision,state=KillSwitchOn?"paused":!ClientState.IsLoggedIn?"logged-out":CurrentCharacterId.Length==0?"waiting":CharacterAllowed?"allowed":"unapproved",characterId=CharacterAllowed?CurrentCharacterId:"",characters=Configuration.Characters.Where(c=>c.Allowed).Select(c=>new{id=c.Id,name=c.Name,homeWorld=c.HomeWorld}).ToList()},
-                    SharingAllowed?pendingInventory:null,SharingAllowed?integrations.Catalog:null,submittedResults,SharingAllowed?Configuration.TaskEvents.Take(100).ToList():[],masterInput.RequestCancellation,SharingAllowed?integrations.Icons:null);
+                    SharingAllowed?pendingInventory:null,SharingAllowed?integrations.Catalog:null,submittedResults,SharingAllowed?Configuration.TaskEvents.Take(100).ToList():[],masterInput.RequestCancellation,SharingAllowed?integrations.Icons:null,SharingAllowed?Configuration.V6Outbox.Take(50).ToList():[]);
             }
             if(GuardRequested)input.SuppressKeyboardOnFrameworkUpdate();else input.Release();
         } catch {input.Release();ScheduleError="Could not evaluate the current schedule or game state. Open settings to inspect the connection; emergency release remains available.";}
@@ -390,7 +420,7 @@ public sealed class Plugin : IDalamudPlugin
                 if(target is null || !Guid.TryParse(result.PetId,out _) || result.Token.Length!=43)throw new ServiceFailure("Invalid pairing response.");
                 if(Mutate(c=>{
                     var same=c.PetId==result.PetId;
-                    if(!same){c.DisplayedChatIds.Clear();c.ActivityOutbox.Clear();c.Outbox.Clear();c.SafetyOutbox.Clear();c.FeatureResults.Clear();c.TaskEvents.Clear();c.Features=new();c.Dynamic=new();c.Reminders.Clear();c.Prompts.Clear();c.Characters.ForEach(x=>x.Allowed=false);}
+                    if(!same){c.V6Outbox.Clear();c.V6ChatIds.Clear();c.PointNoticeIds.Clear();c.RedemptionNoticeIds.Clear();c.DisplayedChatIds.Clear();c.ActivityOutbox.Clear();c.Outbox.Clear();c.SafetyOutbox.Clear();c.FeatureResults.Clear();c.TaskEvents.Clear();c.Features=new();c.Dynamic=new();c.Reminders.Clear();c.Prompts.Clear();c.Characters.ForEach(x=>x.Allowed=false);}
                     target.Approve(c.Characters,!same);c.AccessRevision=checked(Math.Max(0,c.AccessRevision)+1);
                     c.QueuesPetId=result.PetId;c.RevocationConfirmed=false;c.ServiceUrl=ServiceClient.BaseUrl;c.DeviceToken=result.Token;c.PetId=result.PetId;c.PetName=result.PetName;c.Revoked=false;c.LastSyncAtUtc=null;c.ClockOffsetMilliseconds=0;
                 }))
@@ -422,7 +452,11 @@ public sealed class Plugin : IDalamudPlugin
                     QuarantineResults(c,result.Features.RejectedResults);
                     foreach(var r in result.Features.RejectedTaskEvents){var e=c.TaskEvents.FirstOrDefault(e=>e.Id==r.Id);if(e is not null){c.Recovery.Add(new(){Id=e.Id,Kind="task",Code=r.Code,Payload=JsonSerializer.Serialize(e,ServiceClient.Json),PetId=c.PetId});c.TaskEvents.Remove(e);}}
                     ArchiveRecovery(c);
-                    if(result.Features.Allowed)c.Features=result.Features;else{c.Features.Presence=result.Features.Presence;}c.FeatureResults.RemoveAll(e=>result.Features.AcceptedResultIds.Contains(e.Id)&&submittedResults.Any(sent=>sent.Id==e.Id&&sent.State==e.State&&sent.AtUtc==e.AtUtc&&sent.Detail==e.Detail));c.TaskEvents.RemoveAll(e=>result.Features.AcceptedTaskEventIds.Contains(e.Id));
+                    if(result.Features.Allowed){
+                        foreach(var rejected in result.Features.RejectedV6Events){var item=c.V6Outbox.FirstOrDefault(e=>e.Id==rejected.Id);if(item is not null){c.Recovery.Add(new(){Id=item.Id,Kind="interaction",Code=rejected.Code,Payload=JsonSerializer.Serialize(item,ServiceClient.Json),PetId=c.PetId});c.V6Outbox.Remove(item);}}
+                        c.V6Outbox.RemoveAll(e=>result.Features.AcceptedV6EventIds.Contains(e.Id));
+                        V6Local.Merge(result.Features.V6,c.Features.V6,c.V6Outbox,serverTime);c.Features=result.Features;
+                    }else{c.Features.Presence=result.Features.Presence;}c.FeatureResults.RemoveAll(e=>result.Features.AcceptedResultIds.Contains(e.Id)&&submittedResults.Any(sent=>sent.Id==e.Id&&sent.State==e.State&&sent.AtUtc==e.AtUtc&&sent.Detail==e.Detail));c.TaskEvents.RemoveAll(e=>result.Features.AcceptedTaskEventIds.Contains(e.Id));
                     c.ActivityOutbox.RemoveAll(e=>result.AcceptedActivityIds.Contains(e.Id));result.Settings.NormalizeContacts();c.Dynamic=result.Settings;
                     c.Outbox.RemoveAll(e=>result.AcceptedEventIds.Contains(e.Id));
                     if(result.Features.Allowed){c.Prompts=LocalState.Merge(c.Prompts,result,c.Outbox);c.Reminders=result.Reminders;}
@@ -432,7 +466,7 @@ public sealed class Plugin : IDalamudPlugin
                     submittedObservation=null;syncRetryUntil=0;if(pendingInventory?.CapturedAtUtc==submittedInventoryAt)pendingInventory=null;integrations.AcceptedCatalog(submittedCatalog);integrations.AcceptedIcons(result.Features.AcceptedIconIds);integrations.RejectedIcons(result.Features.RejectedIconIds);
                     ServiceStatus=CharacterAllowed?"Connected.":$"This character is not enabled. {MasterName} controls are paused.";
                     if(result.Features.InventoryRequest is {ValueKind:JsonValueKind.Object} request && request.TryGetProperty("id",out var rid) && rid.GetString()!=inventoryRequestId){inventoryRequestId=rid.GetString()??"";MarkInventoryDirty();}
-                    DeliverChat(result.ChatMessages);
+                    DeliverChat(result.ChatMessages);V6.NotifyChanges();
                     var liveStarted=!liveReportsRequested && result.LiveReportsRequested;
                     liveReportsRequested=result.LiveReportsRequested;
                     freshReportRequestId=result.FreshReportRequestId;
@@ -467,8 +501,8 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
     private void Draw()
-    {try {windows.Draw();if(GuardRequested && !HasVisibleReminder){var state=ChatState;var mouse=Dalamud.Bindings.ImGui.ImGui.GetIO().MousePos-Dalamud.Bindings.ImGui.ImGui.GetMainViewport().Pos;input.CaptureRenderedFrame(settings.EditingText,state.Available&&(state.InputArea.Contains(mouse)||state.LogArea.Contains(mouse)));}}catch{input.Release();}}
-    internal void CaptureInput(bool editing,bool mouseOverChat){if(GuardRequested)input.CaptureRenderedFrame(editing || settings.EditingText,mouseOverChat);else input.Release();}
+    {try {PrivateChat.Session.Focused=!Dalamud.Bindings.ImGui.ImGui.GetIO().AppFocusLost;windows.Draw();if(GuardRequested && !HasVisibleReminder){var state=ChatState;var mouse=Dalamud.Bindings.ImGui.ImGui.GetIO().MousePos-Dalamud.Bindings.ImGui.ImGui.GetMainViewport().Pos;input.CaptureRenderedFrame(settings.EditingText || PrivateChat.IsOpen&&PrivateChat.EditingText,state.Available&&(state.InputArea.Contains(mouse)||state.LogArea.Contains(mouse)));}}catch{input.Release();}}
+    internal void CaptureInput(bool editing,bool mouseOverChat){if(GuardRequested)input.CaptureRenderedFrame(editing || settings.EditingText || PrivateChat.IsOpen&&PrivateChat.EditingText,mouseOverChat);else input.Release();}
     internal void FocusGameChat(){settings.ClearTextFocus();nativeChat.FocusInput();}
     internal void ReleaseInput()=>input.Release();
     public void Dispose()
@@ -476,7 +510,7 @@ public sealed class Plugin : IDalamudPlugin
         sleep.End("Plugin unloaded.");sleepInput.Dispose();integrations.Dispose();travel.Dispose();recorder.Dispose();disposed=true;cancel.Cancel();masterInput.Dispose();input.Release();
         PluginInterface.UiBuilder.Draw-=Draw;PluginInterface.UiBuilder.OpenConfigUi-=OpenSettings;PluginInterface.UiBuilder.OpenMainUi-=OpenSettings;
         ClientState.Login-=OnLogin;Framework.Update-=Update;Commands.RemoveHandler("/petservice");Commands.RemoveHandler("/toh");
-        settings.Dispose();windows.RemoveAllWindows();chatCommands.Dispose();movement.Dispose();service.Dispose();cancel.Dispose();
+        PrivateChat.Dispose();Sounds.Dispose();settings.Dispose();windows.RemoveAllWindows();chatCommands.Dispose();movement.Dispose();service.Dispose();cancel.Dispose();
         // A final logout heartbeat cannot be guaranteed during unload/crash. The
         // service marks observations stale after 45 seconds instead of assuming logout.
     }

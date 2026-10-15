@@ -9,11 +9,14 @@ namespace PetService.Windows;
 internal sealed class MasterPortalView : IDisposable
 {
     private readonly FeaturePortalView features=new();
+    private readonly V6MasterView v6=new();
     private readonly JournalPortalView journal=new();
     private readonly TaskEvidenceView evidence=new();
     private string category="Now";private bool addRequested;
     private readonly Dictionary<string,string> lastPages=[];
     private string masterPage="Overview";
+    private readonly Plugin plugin;
+    internal MasterPortalView(Plugin plugin){this.plugin=plugin;}
     private readonly MasterPortalSession session=new(new MasterPortalClient());
     private string password="",newPet="",filter="";
     private string pairingCode="",pairingPet="",pairingExpiry="",confirmationText="";
@@ -32,7 +35,7 @@ internal sealed class MasterPortalView : IDisposable
     internal void Draw()
     {
         EditingText=false;session.Update();
-        if(hadAccess && !session.Unlocked){journal.Dispose();evidence.Dispose();features.Clear();ClearFields();}
+        if(hadAccess && !session.Unlocked){journal.Dispose();evidence.Dispose();features.Clear();v6.Clear();ClearFields();}
         hadAccess=session.Unlocked;CompleteAction();features.Begin(session);
         if(!session.Unlocked) {
             Style.BeginCard("master-login","Master portal","Enter your administrator password to manage pets");
@@ -68,6 +71,7 @@ internal sealed class MasterPortalView : IDisposable
         var detail=dashboard.Selected;
         if(detail is null||detail.Name!=session.Selected){ImGui.TextWrapped(dashboard.Profiles.Count==0?"Add a pet profile, then generate a pairing code on Profile to connect their plugin.":"Choose a profile to open its Master controls.");session.Hide();return;}
         ImGui.TextColored(Style.Muted,detail.Name+" · "+MasterPortalPolicy.State(detail,session.Now));
+        if(ImGui.Button("Open private RP chat"))plugin.PrivateChat.OpenMaster(session.Selected,session.ChatCredential);ImGui.SameLine();if(ImGui.Button("Master sounds"))plugin.PrivateChat.OpenMaster(session.Selected,session.ChatCredential,true);
         DrawNavigation();
         var viewingOverview=false;var viewingChats=false;var viewingSettings=false;var settingsSection="controls";var settingsCharacter="";
         ImGui.BeginDisabled(session.Busy);
@@ -85,6 +89,7 @@ internal sealed class MasterPortalView : IDisposable
             case "Bonding":viewingSettings=true;features.Controls(session,detail);break;
             case "Integrations":viewingSettings=true;settingsSection="integrations";features.Integrations(session,detail);settingsCharacter=features.IntegrationCharacter;break;
             case "Master identity":viewingSettings=true;features.Identity(session);break;
+            case "Routines":case "Scheduled messages":case "Gag profiles":case "Points":viewingSettings=true;v6.Draw(session,detail,masterPage);EditingText|=v6.EditingText;break;
             case "Rewards":viewingSettings=true;settingsSection="rewards";features.Rewards(session,detail);break;
             case "Chat messages":viewingChats=true;DrawChat(detail);break;
             case "Reminders":features.Reminders(session,detail);break;
@@ -357,7 +362,7 @@ internal sealed class MasterPortalView : IDisposable
     {
         var action=session.CompletedAction;var result=session.CompletedResult;
         if(action is null || result is null)return;
-        features.Completed(action);
+        features.Completed(action);v6.Completed(action,result);
         if(action.Action=="saveSettings" && settingsEditor.Pet==action.Pet) {
             settingsEditor.Receive(action.Pet!,result.Settings ?? action.Settings!,true);reloadSettings=false;
         }
@@ -377,6 +382,6 @@ internal sealed class MasterPortalView : IDisposable
         password="";newPet="";filter="";pairingCode="";pairingPet="";pairingExpiry="";
         confirmation=null;confirmationText="";confirmRequested=addRequested=false;drafts.Clear();chatDrafts.Clear();EditingText=false;settingsEditor.Clear();reloadSettings=false;deleteName=templateName="";
     }
-    internal void Lock(){journal.Dispose();evidence.Dispose();features.Clear();session.Lock();ClearFields();hadAccess=false;}
-    public void Dispose(){journal.Dispose();evidence.Dispose();features.Dispose();ClearFields();session.Dispose();}
+    internal void Lock(){journal.Dispose();evidence.Dispose();features.Clear();v6.Clear();session.Lock();ClearFields();hadAccess=false;}
+    public void Dispose(){journal.Dispose();evidence.Dispose();features.Dispose();v6.Clear();ClearFields();session.Dispose();}
 }

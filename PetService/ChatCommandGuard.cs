@@ -46,8 +46,9 @@ internal sealed unsafe class ChatCommandGuard : IDisposable
         bool allowed;
         try
         {
-            allowed = Sleeping?.Invoke()!=true && (!reminderActive()
-                || (command != null && ChatCommandPolicy.Allows(command->ToString())));
+            allowed = Sleeping?.Invoke()==true
+                ? command != null && ChatCommandPolicy.AllowsDuringSleep(command->ToString())
+                : !reminderActive() || command != null && ChatCommandPolicy.Allows(command->ToString());
         }
         catch (Exception exception)
         {
@@ -63,8 +64,10 @@ internal sealed unsafe class ChatCommandGuard : IDisposable
                 try {
                     var parsed=SeString.Parse(command->StringPtr);
                     var first=parsed.Payloads.FirstOrDefault() as TextPayload;
-                    if(first is not null) {
+                    if(first is not null&&!options.ExcludedChannels.Contains(SpeechGarbler.Channel(first.Text??""))) {
                         var start=SpeechGarbler.BodyStart(first.Text??"");
+                        // A structured player link can carry the tell target after the command prefix.
+                        if(start<0&&(first.Text??"").Trim().ToLowerInvariant() is "/tell" or "/t"&&parsed.Payloads.Any(p=>p is PlayerPayload))start=(first.Text??"").Length;
                         if(start>=0) {
                             var builder=new SeStringBuilder();var inLink=false;var firstText=true;
                             foreach(var payload in parsed.Payloads) {
@@ -72,7 +75,7 @@ internal sealed unsafe class ChatCommandGuard : IDisposable
                                 if(payload is ItemPayload or MapLinkPayload or PlayerPayload)inLink=true;
                                 if(payload is TextPayload tp && !inLink) {
                                     var text=tp.Text??"";var prefix=firstText?Math.Min(start,text.Length):0;
-                                    builder.AddText(text[..prefix]+SpeechGarbler.Body(text[prefix..],options.GarbleStrength,options.GarbleStyle));
+                                    builder.AddText(text[..prefix]+SpeechGarbler.Body(text[prefix..],options.GarbleStrength,options.GarbleStyle,options.CustomSyllables));
                                 } else builder.Add(payload);
                                 if(payload is RawPayload raw && raw.Data.AsSpan().SequenceEqual(RawPayload.LinkTerminator.Data))inLink=false;
                                 if(payload is TextPayload)firstText=false;

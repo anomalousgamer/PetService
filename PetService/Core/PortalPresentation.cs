@@ -19,9 +19,9 @@ internal static class PortalPresentation
 {
     internal static readonly (string Category, string[] Pages)[] Navigation = [
         ("Now", ["Overview", "Inventory", "Tasks"]),
-        ("Control", ["Bonding", "Messages", "Chat messages", "Reminders", "Integrations"]),
+        ("Control", ["Bonding", "Messages", "Chat messages", "Reminders", "Routines", "Scheduled messages", "Gag profiles", "Integrations"]),
         ("History", ["Journal", "Analytics", "Zone visits", "Duty summaries", "Trade summary", "Travel", "Inventory history", "Retainers", "Bonding history", "Task evidence"]),
-        ("Manage", ["Settings", "Master identity", "Rewards", "Profile"])
+        ("Manage", ["Settings", "Master identity", "Points", "Profile"])
     ];
     internal static string State(string value) => value switch {
         "cancelled" => "Canceled", "lock" => "Bonding", "random-snooze" => "Random snooze",

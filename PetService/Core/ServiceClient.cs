@@ -57,12 +57,12 @@ public sealed class ServiceClient : IDisposable
         return JsonSerializer.Deserialize<T>(buffer.ToArray(),Json) ?? throw new ServiceFailure("Invalid service response.");
     }
     public Task<PairResult> Pair(string code,CancellationToken cancel) => Post<PairResult>("/api/pair",new { code },null,cancel);
-    public Task<SyncResult> Sync(string token,Observation? status,List<Choice> events,List<ActivityRecord> activity,string? reportRequestId,object access,InventorySnapshot? inventory,object? catalog,List<FeatureResult> results,List<TaskEvent> taskEvents,CancellationToken cancel,List<IconAsset>? icons=null)
+    public Task<SyncResult> Sync(string token,Observation? status,List<Choice> events,List<ActivityRecord> activity,string? reportRequestId,object access,InventorySnapshot? inventory,object? catalog,List<FeatureResult> results,List<TaskEvent> taskEvents,CancellationToken cancel,List<IconAsset>? icons=null,List<AdvancedEvent>? v6Events=null)
     {
         var snapshotIssues=new Dictionary<string,string>();
         if(inventory is not null && Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(inventory,Json))>1200000){inventory=null;snapshotIssues["inventory"]="INVENTORY_TOO_LARGE";}
         if(catalog is not null && Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(catalog,Json))>300000){catalog=null;snapshotIssues["catalog"]="CATALOG_TOO_LARGE";}
-        return Post<SyncResult>("/api/sync",new { status,events,activity,reportRequestId,access,inventory=inventory is null?null:new {inventory.CharacterId,inventory.CharacterName,inventory.HomeWorld,inventory.CapturedAtUtc,inventory.Gil,inventory.Containers},catalog,results,taskEvents,icons,snapshotIssues=snapshotIssues.Count==0?null:snapshotIssues },token,cancel);
+        return Post<SyncResult>("/api/sync",new { status,events,activity,reportRequestId,access,v6Events,inventory=inventory is null?null:new {inventory.CharacterId,inventory.CharacterName,inventory.HomeWorld,inventory.CapturedAtUtc,inventory.Gil,inventory.Containers},catalog,results,taskEvents,icons,snapshotIssues=snapshotIssues.Count==0?null:snapshotIssues },token,cancel);
     }
     public Task<DeviceEventResult> DeviceEvents(string token,List<Choice> events,CancellationToken cancel,List<FeatureResult>? results=null) => Post<DeviceEventResult>("/api/device/events",new { events,results },token,cancel);
     public Task<CredentialState> Verify(string token,CancellationToken cancel)=>Post<CredentialState>("/api/device/verify",new {},token,cancel);
