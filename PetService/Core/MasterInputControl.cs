@@ -5,6 +5,8 @@ namespace PetService.Core;
 internal sealed class MasterInputControl : IDisposable
 {
     private CancellationTokenSource requests = new();
+    private bool disposed;
+    internal Exception? LastCancellationError { get; private set; }
 
     public bool Enabled { get; private set; }
     public long Revision { get; private set; }
@@ -18,21 +20,38 @@ internal sealed class MasterInputControl : IDisposable
 
     public void SetEnabled(bool enabled)
     {
+        ObjectDisposedException.ThrowIf(disposed, this);
         if (Enabled == enabled) return;
         Enabled = enabled;
         Revision++;
-        requests.Cancel();
-        requests.Dispose();
-        requests = new();
-        if (!enabled) requests.Cancel();
+        ReplaceRequests();
     }
 
-    public void Invalidate(){Revision++;requests.Cancel();requests.Dispose();requests=new();if(!Enabled)requests.Cancel();}
-    public bool Accepts(long revision) => Enabled && revision == Revision;
+    private void Cancel(CancellationTokenSource source)
+    {
+        try { source.Cancel(); LastCancellationError = null; }
+        catch (AggregateException error) { LastCancellationError = error; }
+    }
+
+    private void ReplaceRequests()
+    {
+        var previous = requests;
+        requests = new();
+        if (!Enabled) requests.Cancel();
+        try { Cancel(previous); }
+        finally { previous.Dispose(); }
+    }
+
+    public void Invalidate(){ObjectDisposedException.ThrowIf(disposed,this);Revision++;ReplaceRequests();}
+    public bool Accepts(long revision) => !disposed && Enabled && revision == Revision;
 
     public void Dispose()
     {
-        requests.Cancel();
-        requests.Dispose();
+        if (disposed) return;
+        disposed = true;
+        Enabled = false;
+        Revision++;
+        try { Cancel(requests); }
+        finally { requests.Dispose(); }
     }
 }

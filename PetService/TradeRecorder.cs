@@ -104,5 +104,13 @@ internal sealed unsafe class TradeRecorder : IDisposable
     }
     internal void Stop(string reason){tracker.Interrupt(DateTimeOffset.UtcNow,reason);Deliver();Reset();}
     internal void Reset(){Interlocked.Increment(ref revision);tracker.Reset();while(signals.TryDequeue(out _)){}nextPoll=0;}
-    public void Dispose(){logUpdate?.Dispose();simpleMessage?.Dispose();Reset();}
+    public void Dispose()
+    {
+        try { logUpdate?.Dispose(); logUpdate=null; }
+        finally
+        {
+            try { simpleMessage?.Dispose(); simpleMessage=null; }
+            finally { Reset(); }
+        }
+    }
 }

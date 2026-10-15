@@ -38,5 +38,5 @@ internal sealed unsafe class SleepInputGuard : IDisposable
         hook!.Original(label,hint,buffer,size,dimensions,flags,callback,userData);
         return 0;
     }
-    public void Dispose(){hook?.Dispose();if(library!=0)NativeLibrary.Free(library);}
+    public void Dispose(){hook?.Dispose();hook=null;if(library!=0){NativeLibrary.Free(library);library=0;}}
 }

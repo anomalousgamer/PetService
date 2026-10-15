@@ -182,7 +182,13 @@ internal sealed unsafe class ActivityRecorder : IDisposable
     }
     public void Dispose()
     {
-        Stop("plugin unloaded");trades.Dispose();Plugin.Duty.DutyStarted-=Started;Plugin.Duty.DutyCompleted-=Completed;
-        Plugin.Duty.DutyWiped-=Wiped;Plugin.Duty.DutyRecommenced-=Recommenced;Plugin.Inventory.InventoryChanged-=InventoryChanged;
+        try { Stop("plugin unloaded"); }
+        catch(Exception error) { Plugin.Log.Warning(error,"Could not finish the last activity record during unload."); }
+        try { trades.Dispose(); }
+        finally
+        {
+            Plugin.Duty.DutyStarted-=Started;Plugin.Duty.DutyCompleted-=Completed;
+            Plugin.Duty.DutyWiped-=Wiped;Plugin.Duty.DutyRecommenced-=Recommenced;Plugin.Inventory.InventoryChanged-=InventoryChanged;
+        }
     }
 }

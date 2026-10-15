@@ -41,5 +41,5 @@ internal sealed unsafe class MovementGuard : IDisposable
         return hook!.Original(manager, code);
     }
 
-    public void Dispose() => hook?.Dispose();
+    public void Dispose() { hook?.Dispose(); hook=null; }
 }

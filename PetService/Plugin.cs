@@ -55,10 +55,13 @@ public sealed class Plugin : IDalamudPlugin
     internal string MasterName=>Configuration.Features.Identity.Name;
     internal string CurrentCharacterId=>ClientState.IsLoggedIn && Player.IsLoaded && Player.ContentId!=0?Player.ContentId.ToString(System.Globalization.CultureInfo.InvariantCulture):"";
     internal bool CharacterAllowed=>CurrentCharacterId.Length>0 && Configuration.Characters.Any(c=>c.Id==CurrentCharacterId && c.Allowed);
-    internal bool SharingAllowed=>IsPaired && !KillSwitchOn && CharacterAllowed;
+    internal bool SharingAllowed=>!disposed && IsPaired && !KillSwitchOn && CharacterAllowed;
     internal bool LocalRelease=>localRelease;
     internal bool GuardAvailable=>movement.Available && chatCommands.Available && nativeChat.Read().Available && !input.HasFailed;
-    internal bool GuardRequested=>GuardAvailable && SharingAllowed && Ready && !localRelease && (Sleeping || HasVisibleReminder || LockRequested);
+    internal bool GuardRequested=>SharingAllowed && Ready && !localRelease && (Sleeping || HasVisibleReminder || LockRequested) && GuardAvailable;
+    // Input detours consume capture state. Calling GuardRequested here would
+    // resample native input and prompt selection from inside an input query.
+    private bool GameplayCaptureActive=>input is not null && input.IsCapturing && SharingAllowed && Ready && !localRelease;
     internal bool LockRequested=>Configuration.Features.Lock is {Enabled:true} l && (l.ExpiresAtUtc is null || LocalState.Parse(l.ExpiresAtUtc)>Now);
     internal Task<byte[]> ReadPortrait()=>service.Portrait(Configuration.DeviceToken,cancel.Token);
     internal void MarkInventoryDirty(){inventoryDirty=true;inventoryAfter=Environment.TickCount64+2000;}
@@ -111,6 +114,7 @@ public sealed class Plugin : IDalamudPlugin
     private string? freshReportRequestId,submittedReportRequestId;
     private readonly ObservationUploadPolicy observationUpload=new();
     private bool previousLogin, localRelease, disposed;
+    private readonly ShutdownSequence shutdown = new();
     private string sessionId = "", loginAt = "", loginSource = "";
     internal string ServiceStatus { get; private set; } = "Not connected yet.";
     internal string SaveError { get; private set; } = "";
@@ -127,7 +131,15 @@ public sealed class Plugin : IDalamudPlugin
     internal bool Ready => ClientState.IsLoggedIn && Player.IsLoaded && Objects.LocalPlayer is not null
         && !Condition[ConditionFlag.BetweenAreas] && !Condition[ConditionFlag.BetweenAreas51];
     internal DateTimeOffset Now => DateTimeOffset.UtcNow.AddMilliseconds(Configuration.ClockOffsetMilliseconds);
-    internal AdvancedPrompt? CurrentAdvanced=>SharingAllowed&&Ready&&!localRelease&&!Sleeping?V6Local.Pending(Configuration.Features.V6,Now,Observe()):null;
+    internal AdvancedPrompt? CurrentAdvanced=>SharingAllowed&&Ready&&!localRelease&&!Sleeping?V6Local.Pending(Configuration.Features.V6,Now,ReadPromptContext()):null;
+    // Prompt selection needs only these game flags, never the full report:
+    // Observe() itself includes whether a prompt is currently visible.
+    private Observation ReadPromptContext()=>new()
+    {
+        InDuty=Condition[ConditionFlag.BoundByDuty]||Condition[ConditionFlag.BoundByDuty56]||Condition[ConditionFlag.BoundByDuty95],
+        InCombat=Condition[ConditionFlag.InCombat],
+        Cutscene=Condition[ConditionFlag.WatchingCutscene]||Condition[ConditionFlag.WatchingCutscene78],
+    };
     internal Prompt? CurrentPrompt {
         get {
             if(!SharingAllowed||!Ready||localRelease||Sleeping)return null;
@@ -167,12 +179,12 @@ public sealed class Plugin : IDalamudPlugin
         else if(Configuration.DeviceToken.Length>0 && !ServiceClient.MatchesBundledService(Configuration.ServiceUrl))
             ServiceStatus="This pairing belongs to a different service. Request a new pairing code to connect.";
         V6=new(this);nativeChat=new(GameGui,Log);chatTwo=new(PluginInterface);sleep=new(this);sleepInput=new(Interop,()=>Sleeping,Log);
-        chatCommands=new(Interop,()=>GuardRequested && input is not null && input.IsCapturing,Chat,Log);
+        chatCommands=new(Interop,()=>GameplayCaptureActive,Chat,Log);
         chatCommands.Sleeping=()=>Sleeping;
         chatCommands.SpeechSettings=()=>SharingAllowed && Ready ? Configuration.Dynamic : null;
         recorder=new(this);travel=new(this);
         changes=new(this);windows.AddWindow(changes);
-        movement=new(Interop,()=>GuardRequested && input is not null && input.IsCapturing,Log);
+        movement=new(Interop,()=>GameplayCaptureActive,Log);
         input=new(KeyState,Gamepad,nativeChat,chatCommands,movement,chatTwo,()=>Sleeping,Log);
         PrivateChat=new(this);Sounds=new(this);windows.AddWindow(PrivateChat);
         sleepInput.DrawingPrivateChat=()=>DrawingPrivateChat;
@@ -189,7 +201,7 @@ public sealed class Plugin : IDalamudPlugin
         previousLogin=ClientState.IsLoggedIn;
         if(previousLogin && SharingAllowed)StartSession("first-observed");
     }
-    private void OnLogin() {previousLogin=true;if(SharingAllowed)StartSession("login-event");nextSync=0;nextEvaluation=0;}
+    private void OnLogin() {if(disposed)return;previousLogin=true;if(SharingAllowed)StartSession("login-event");nextSync=0;nextEvaluation=0;}
     private void StartSession(string source) {sessionId=Guid.NewGuid().ToString();loginAt=LocalState.Stamp(Now);loginSource=source;localRelease=false;}
     private void OpenSettings()=>settings.IsOpen=true;
     internal void OpenContact()=>settings.OpenContact();
@@ -235,7 +247,9 @@ public sealed class Plugin : IDalamudPlugin
     internal void ReleaseSession()
     {
         if(localRelease)return;
-        sleep.End("Safe mode selected by pet.");localRelease=true;input.Release();integrations.Release();AdvanceAccessRevision();masterInput.Invalidate();
+        localRelease=true;input.Release();masterInput.Invalidate();AdvanceAccessRevision();
+        ReleaseCleanup("Sleep",()=>sleep.End("Safe mode selected by pet."));
+        ReleaseCleanup("integrations",integrations.Release);
         if(IsPaired && !KillSwitchOn)Mutate(c=>c.SafetyOutbox.Add(new Choice{Action="release",AccessRevision=Configuration.AccessRevision,ClientAtUtc=LocalState.Stamp(Now)}));
         nextSafetySync=0;
         nextSync=0;
@@ -257,8 +271,8 @@ public sealed class Plugin : IDalamudPlugin
         if(KillSwitchOn)return;
         // Release first, including when disk persistence fails. Cancellation
         // alone is insufficient: CompleteNetwork also rejects old revisions.
-        sleep.End("Kill switch selected by pet.");travel.Reset();recorder.Stop("kill switch activated");integrations.Release();
         masterInput.SetEnabled(false);input.Release();sessionId="";loginAt="";loginSource="";
+        Configuration.Enabled=false;
         var revision=checked(Math.Max(0,Configuration.AccessRevision)+1);
         var notice=IsPaired ? new Choice{Action="pause",AccessRevision=revision,ClientAtUtc=LocalState.Stamp(Now)} : null;
         var saved=Mutate(c=>{c.Enabled=false;c.AccessRevision=revision;if(notice is not null)c.SafetyOutbox.Add(notice);});
@@ -267,6 +281,16 @@ public sealed class Plugin : IDalamudPlugin
         if(!saved)SaveError="The kill switch is ON for this session, but could not be saved. Fix local configuration permissions or disk space before reloading the plugin; it may resume after a reload.";
         nextSafetySync=0;
         ServiceStatus=$"Kill switch is on. {MasterName} input and status sharing are paused.";
+        ReleaseCleanup("Sleep",()=>sleep.End("Kill switch selected by pet."));
+        ReleaseCleanup("travel",travel.Reset);
+        ReleaseCleanup("activity",()=>recorder.Stop("kill switch activated"));
+        ReleaseCleanup("integrations",integrations.Release);
+        ReleaseCleanup("sounds",Sounds.Stop);
+    }
+    private static void ReleaseCleanup(string name,System.Action cleanup)
+    {
+        try { cleanup(); }
+        catch(Exception error) { try { Log.Warning(error,"Pet Service local release cleanup failed: {Component}",name); } catch { } }
     }
     internal void RequestAttention(string? request=null)
     {
@@ -329,7 +353,7 @@ public sealed class Plugin : IDalamudPlugin
         o.DataCenter=Player.CurrentWorld.Value.DataCenter.Value.Name.ToString();o.TerritoryId=ClientState.TerritoryType;
         var ordinaryZone=Data.GetExcelSheet<TerritoryType>()?.GetRowOrDefault(o.TerritoryId)?.PlaceName.Value.Name.ToString() ?? "Unknown";
         o.Zone=HousingLocation.Observe(o.TerritoryId,ordinaryZone);
-        o.InDuty=Condition[ConditionFlag.BoundByDuty]||Condition[ConditionFlag.BoundByDuty56]||Condition[ConditionFlag.BoundByDuty95];
+        var promptContext=ReadPromptContext();o.InDuty=promptContext.InDuty;
         o.MapId=ClientState.MapId;o.Job=Player.ClassJob.Value.Name.ToString();o.Level=Player.Level;
         if(Data.GetExcelSheet<Map>()?.GetRowOrDefault(o.MapId) is { } map && map.SizeFactor>0) {
             var pos=Objects.LocalPlayer!.Position;
@@ -337,9 +361,9 @@ public sealed class Plugin : IDalamudPlugin
             o.Y=Math.Round(MapUtil.ConvertWorldCoordXZToMapCoord(pos.Z,map.SizeFactor,map.OffsetY),2);
         }
         o.Crafting=Condition[ConditionFlag.Crafting];o.Gathering=Condition[ConditionFlag.Gathering];o.Mounted=Condition[ConditionFlag.Mounted];
-        o.Cutscene=Condition[ConditionFlag.WatchingCutscene]||Condition[ConditionFlag.WatchingCutscene78];o.Unconscious=Condition[ConditionFlag.Unconscious];
-        o.Bonded=LockRequested && input.IsCapturing;o.Sleeping=Sleeping && input.IsCapturing;o.PromptActive=HasVisibleReminder && input.IsCapturing;
-        o.InCombat=Condition[ConditionFlag.InCombat];o.IsAfk=Player.IsAwayFromKeyboard;o.GameIdle=ClientState.IsClientIdle();return o;
+        o.Cutscene=promptContext.Cutscene;o.Unconscious=Condition[ConditionFlag.Unconscious];
+        o.Bonded=LockRequested && input.IsCapturing;o.Sleeping=Sleeping && input.IsCapturing;o.PromptActive=input.IsCapturing && HasVisibleReminder;
+        o.InCombat=promptContext.InCombat;o.IsAfk=Player.IsAwayFromKeyboard;o.GameIdle=ClientState.IsClientIdle();return o;
     }
     private string reportedLock="",reportedLockState="";
     private void UpdateLockResult(){var l=Configuration.Features.Lock;if(l is null || !SharingAllowed || !Ready)return;var state=l.State=="expired"?"expired":!l.Enabled?l.State is "failed" or "unavailable"?l.State:"released":!LockRequested?"expired":localRelease?"released":input.HasFailed||!movement.Available||!chatCommands.Available||!nativeChat.Read().Available?"failed":input.IsCapturing?"applied":"queued";if(state=="queued"||reportedLock==l.Id&&reportedLockState==state)return;if(Mutate(c=>c.FeatureResults.Add(new(){Id=l.Id,AtUtc=LocalState.Stamp(Now),State=state,Detail=state=="failed"?"Required input or native chat guard unavailable.":""}))){reportedLock=l.Id;reportedLockState=state;nextSync=0;}}
@@ -370,7 +394,7 @@ public sealed class Plugin : IDalamudPlugin
             recorder.Update(Observe);travel.Update(Observe);updates.Update();
             if(Ready && !changesShown) {
                 if(changesEligible==0)changesEligible=Environment.TickCount64+3000;
-                if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.6.0.0")changes.IsOpen=true;}
+                if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.6.0.1")changes.IsOpen=true;}
             } else if(!Ready)changesEligible=0;
             // Only explicit safety notices use this route. It carries no observation
             // and remains usable while the kill switch pauses normal synchronization.
@@ -501,16 +525,42 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
     private void Draw()
-    {try {PrivateChat.Session.Focused=!Dalamud.Bindings.ImGui.ImGui.GetIO().AppFocusLost;windows.Draw();if(GuardRequested && !HasVisibleReminder){var state=ChatState;var mouse=Dalamud.Bindings.ImGui.ImGui.GetIO().MousePos-Dalamud.Bindings.ImGui.ImGui.GetMainViewport().Pos;input.CaptureRenderedFrame(settings.EditingText || PrivateChat.IsOpen&&PrivateChat.EditingText,state.Available&&(state.InputArea.Contains(mouse)||state.LogArea.Contains(mouse)));}}catch{input.Release();}}
+    {if(disposed)return;try {PrivateChat.Session.Focused=!Dalamud.Bindings.ImGui.ImGui.GetIO().AppFocusLost;windows.Draw();if(GuardRequested && !HasVisibleReminder){var state=ChatState;var mouse=Dalamud.Bindings.ImGui.ImGui.GetIO().MousePos-Dalamud.Bindings.ImGui.ImGui.GetMainViewport().Pos;input.CaptureRenderedFrame(settings.EditingText || PrivateChat.IsOpen&&PrivateChat.EditingText,state.Available&&(state.InputArea.Contains(mouse)||state.LogArea.Contains(mouse)));}}catch{input.Release();}}
     internal void CaptureInput(bool editing,bool mouseOverChat){if(GuardRequested)input.CaptureRenderedFrame(editing || settings.EditingText || PrivateChat.IsOpen&&PrivateChat.EditingText,mouseOverChat);else input.Release();}
     internal void FocusGameChat(){settings.ClearTextFocus();nativeChat.FocusInput();}
     internal void ReleaseInput()=>input.Release();
     public void Dispose()
     {
-        sleep.End("Plugin unloaded.");sleepInput.Dispose();integrations.Dispose();travel.Dispose();recorder.Dispose();disposed=true;cancel.Cancel();masterInput.Dispose();input.Release();
-        PluginInterface.UiBuilder.Draw-=Draw;PluginInterface.UiBuilder.OpenConfigUi-=OpenSettings;PluginInterface.UiBuilder.OpenMainUi-=OpenSettings;
-        ClientState.Login-=OnLogin;Framework.Update-=Update;Commands.RemoveHandler("/petservice");Commands.RemoveHandler("/toh");
-        PrivateChat.Dispose();Sounds.Dispose();settings.Dispose();windows.RemoveAllWindows();chatCommands.Dispose();movement.Dispose();service.Dispose();cancel.Dispose();
+        if (!disposed)
+        {
+            // Stop callbacks before any resource is disposed. Each registered
+            // cleanup step is attempted even if another component throws.
+            disposed = true;
+            shutdown.Add("UI draw handler", () => PluginInterface.UiBuilder.Draw -= Draw, true);
+            shutdown.Add("UI config handler", () => PluginInterface.UiBuilder.OpenConfigUi -= OpenSettings, true);
+            shutdown.Add("UI main handler", () => PluginInterface.UiBuilder.OpenMainUi -= OpenSettings, true);
+            shutdown.Add("login handler", () => ClientState.Login -= OnLogin, true);
+            shutdown.Add("framework handler", () => Framework.Update -= Update, true);
+            shutdown.Add("petservice command", () => Commands.RemoveHandler("/petservice"), true);
+            shutdown.Add("toh command", () => Commands.RemoveHandler("/toh"), true);
+            shutdown.Add("gameplay input capture", input.Release);
+            shutdown.Add("Sleep release", () => sleep.End("Plugin unloaded."));
+            shutdown.Add("pending service requests", cancel.Cancel);
+            shutdown.Add("master input requests", masterInput.Dispose);
+            shutdown.Add("window registrations", windows.RemoveAllWindows, true);
+            shutdown.Add("Sleep input hook", sleepInput.Dispose, true);
+            shutdown.Add("chat command hook", chatCommands.Dispose, true);
+            shutdown.Add("movement hook", movement.Dispose, true);
+            shutdown.Add("travel hooks", travel.Dispose, true);
+            shutdown.Add("activity hooks and handlers", recorder.Dispose, true);
+            shutdown.Add("managed integration effects", integrations.Dispose);
+            shutdown.Add("private chat window", PrivateChat.Dispose);
+            shutdown.Add("remote sounds", Sounds.Dispose);
+            shutdown.Add("settings window", settings.Dispose);
+            shutdown.Add("service HTTP client", service.Dispose);
+            shutdown.Add("service cancellation source", cancel.Dispose);
+        }
+        shutdown.Run((step, error) => Log.Error(error, "Pet Service cleanup failed: {Step}", step));
         // A final logout heartbeat cannot be guaranteed during unload/crash. The
         // service marks observations stale after 45 seconds instead of assuming logout.
     }

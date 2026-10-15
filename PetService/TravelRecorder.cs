@@ -68,5 +68,14 @@ internal sealed unsafe class TravelRecorder : IDisposable
         if(tracker.Observe(o,loading,tick) is { } data)plugin.RecordTravel(data,o);
     }
     internal void Reset()=>tracker.Reset();
-    public void Dispose(){Plugin.Condition.ConditionChange-=ConditionChanged;Plugin.ClientState.ZoneInit-=ZoneInitialized;history?.Dispose();action?.Dispose();teleport?.Dispose();}
+    public void Dispose()
+    {
+        Plugin.Condition.ConditionChange-=ConditionChanged;Plugin.ClientState.ZoneInit-=ZoneInitialized;
+        try { history?.Dispose(); history=null; }
+        finally
+        {
+            try { action?.Dispose(); action=null; }
+            finally { teleport?.Dispose(); teleport=null; }
+        }
+    }
 }

@@ -28,7 +28,6 @@ internal sealed class ChangesWindow : Window
     {
         var accent = new Vector4(.77f, .64f, 1, 1);
         ImGui.TextColored(accent, "PET SERVICE · " + ReleaseNotes.Version);
-        ImGui.TextUnformatted("Promises and little treasures");
         ImGui.Separator();
 
         // Keep the footer outside the scrolling body, even for long notes.
@@ -41,15 +40,17 @@ internal sealed class ChangesWindow : Window
         {
             if (visible)
             {
-                var number = 0;
                 foreach (var section in ReleaseNotes.Sections)
                 {
-                    ImGui.Spacing();
-                    ImGui.TextColored(accent, section.Title);
-                    ImGui.Separator();
+                    if (!string.IsNullOrEmpty(section.Title))
+                    {
+                        ImGui.Spacing();
+                        ImGui.TextColored(accent, section.Title);
+                        ImGui.Separator();
+                    }
                     foreach (var riddle in section.Riddles)
                     {
-                        ImGui.TextWrapped($"{++number:00}. {riddle}");
+                        ImGui.TextWrapped(riddle);
                         ImGui.Spacing();
                     }
                 }

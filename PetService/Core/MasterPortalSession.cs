@@ -5,6 +5,7 @@ namespace PetService.Core;
 internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposable
 {
     private string password="";
+    private bool disposed;
     private CancellationTokenSource cancel=new();
     private Task<AdminDashboard>? dashboardTask;
     private Task<SettingsSnapshot>? settingsTask;
@@ -189,6 +190,7 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     }
     internal void Lock()
     {
+        if(disposed)return;
         Hide();selectionRevision++;requestedReportAt=null;refreshAfterReport=false;
         cancel.Cancel();cancel.Dispose();cancel=new();
         ObserveFailure(controlHistoryTask);controlHistoryTask=null;OlderControlHistory=[];ControlCursor=null;
@@ -203,5 +205,5 @@ internal sealed class MasterPortalSession(MasterPortalClient client) : IDisposab
     {
         if(task is not null)_=task.ContinueWith(t=>{_=t.Exception;},CancellationToken.None,TaskContinuationOptions.OnlyOnFaulted,TaskScheduler.Default);
     }
-    public void Dispose(){Lock();cancel.Dispose();client.Dispose();}
+    public void Dispose(){if(disposed)return;try{Lock();}finally{disposed=true;try{cancel.Dispose();}finally{client.Dispose();}}}
 }

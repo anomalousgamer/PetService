@@ -127,5 +127,5 @@ internal sealed unsafe class ChatCommandGuard : IDisposable
         }
     }
 
-    public void Dispose() => hook?.Dispose();
+    public void Dispose() { hook?.Dispose(); hook=null; }
 }
