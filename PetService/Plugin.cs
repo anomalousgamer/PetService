@@ -113,6 +113,8 @@ public sealed class Plugin : IDalamudPlugin
     private bool liveReportsRequested;
     private string? freshReportRequestId,submittedReportRequestId;
     private readonly ObservationUploadPolicy observationUpload=new();
+    private readonly FrameStepRunner frameSteps=new();
+    internal string UpdateError=>frameSteps.FailedSteps.Count==0?"":"Local updates are retrying ("+string.Join(", ",frameSteps.FailedSteps)+"). Details are in the Dalamud log (/xllog).";
     private bool previousLogin, localRelease, disposed;
     private readonly ShutdownSequence shutdown = new();
     private string sessionId = "", loginAt = "", loginSource = "";
@@ -367,72 +369,129 @@ public sealed class Plugin : IDalamudPlugin
     }
     private string reportedLock="",reportedLockState="";
     private void UpdateLockResult(){var l=Configuration.Features.Lock;if(l is null || !SharingAllowed || !Ready)return;var state=l.State=="expired"?"expired":!l.Enabled?l.State is "failed" or "unavailable"?l.State:"released":!LockRequested?"expired":localRelease?"released":input.HasFailed||!movement.Available||!chatCommands.Available||!nativeChat.Read().Available?"failed":input.IsCapturing?"applied":"queued";if(state=="queued"||reportedLock==l.Id&&reportedLockState==state)return;if(Mutate(c=>c.FeatureResults.Add(new(){Id=l.Id,AtUtc=LocalState.Stamp(Now),State=state,Detail=state=="failed"?"Required input or native chat guard unavailable.":""}))){reportedLock=l.Id;reportedLockState=state;nextSync=0;}}
-    internal void VerifyConnection(){if(Configuration.DeviceToken.Length==0||credentialTask is not null)return;credentialToken=Configuration.DeviceToken;credentialTask=service.Verify(credentialToken,cancel.Token);}
+    internal void VerifyConnection(){if(Configuration.DeviceToken.Length==0||credentialTask is not null)return;frameSteps.RetryNow();nextSync=syncRetryUntil=0;credentialToken=Configuration.DeviceToken;credentialTask=service.Verify(credentialToken,cancel.Token);}
     private void TrackCharacter(){
         var id=CurrentCharacterId;
         if(id.Length>0 && Configuration.Characters.FirstOrDefault(c=>c.Id==id) is { } existing && (existing.Name!=Player.CharacterName || existing.HomeWorld!=Player.HomeWorld.Value.Name.ToString()))Mutate(c=>{var x=c.Characters.Single(c=>c.Id==id);x.Name=Player.CharacterName;x.HomeWorld=Player.HomeWorld.Value.Name.ToString();});
         if(id.Length>0 && !Configuration.Characters.Any(c=>c.Id==id))Mutate(c=>c.Characters.Add(new(){Id=id,Name=Player.CharacterName,HomeWorld=Player.HomeWorld.Value.Name.ToString(),Allowed=false}));
         var marker=id+":"+CharacterAllowed;
         if(marker==observedCharacter)return;
-        sleep.End("Character changed.");recorder.Stop("character changed");travel.Reset();if(observedCharacter.Length>0)integrations.CharacterChanged();input.Release();
+        input.Release();
+        ReleaseCleanup("Sleep",()=>sleep.End("Character changed."));
+        ReleaseCleanup("activity",()=>recorder.Stop("character changed"));
+        ReleaseCleanup("travel",travel.Reset);
+        if(observedCharacter.Length>0)ReleaseCleanup("integrations",integrations.CharacterChanged);
         observedCharacter=marker;characterRevision++;AdvanceAccessRevision();masterInput.Invalidate();sessionId="";loginAt="";loginSource="";localRelease=false;pendingInventory=null;inventoryDirty=true;observationUpload.Reset();nextSync=0;
         if(SharingAllowed)StartSession("first-observed");
+    }
+    private bool UpdateStep(string name,System.Action update)=>frameSteps.Run(name,update,Environment.TickCount64,
+        (step,error)=>Log.Warning(error,"Pet Service update failed: {Step}; retrying.",step));
+    private bool ConnectionStep(string name,System.Action update)
+    {
+        var ready=UpdateStep(name,update);
+        if(!ready) {
+            input.Release();
+            if(IsPaired && !KillSwitchOn)ServiceStatus="Synchronization is waiting for "+name+". Retrying automatically; see /xllog for details.";
+        }
+        return ready;
     }
     private void Update(IFramework framework)
     {
         if(disposed)return;
-        try {
-            var logged=ClientState.IsLoggedIn;
-            if(logged && !previousLogin && SharingAllowed)StartSession("first-observed");
-            if(!logged && previousLogin){localRelease=false;sessionId="";loginAt="";loginSource="";nextSync=0;input.Release();}
-            previousLogin=logged;
-            TrackCharacter();
-            CompleteNetwork();
-            integrations.Update();chatTwo.Update();V6.Update();sleep.Update(GuardAvailable && sleepInput.Available);Sounds.Update();if(!PrivateChat.IsOpen)PrivateChat.Session.Tick(false);
-            if(SharingAllowed && Ready && inventoryDirty && Environment.TickCount64>=inventoryAfter)try{pendingInventory=InventoryReader.Capture(this);inventoryDirty=false;}catch{inventoryAfter=Environment.TickCount64+15000;}
-            UpdateLockResult();
-            recorder.Update(Observe);travel.Update(Observe);updates.Update();
-            if(Ready && !changesShown) {
-                if(changesEligible==0)changesEligible=Environment.TickCount64+3000;
-                if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.6.0.1")changes.IsOpen=true;}
-            } else if(!Ready)changesEligible=0;
-            // Only explicit safety notices use this route. It carries no observation
-            // and remains usable while the kill switch pauses normal synchronization.
-            if(IsPaired && safetyTask is null && (Configuration.SafetyOutbox.Count>0 || KillSwitchOn&&Configuration.FeatureResults.Any(r=>r.State is "released" or "failed" or "unavailable")) && Environment.TickCount64>=nextSafetySync) {
-                nextSafetySync=Environment.TickCount64+15000;
-                var batch=JsonSerializer.Deserialize<List<Choice>>(JsonSerializer.Serialize(Configuration.SafetyOutbox.Take(20),ServiceClient.Json),ServiceClient.Json)!;
-                submittedSafetyResults=Configuration.FeatureResults.Where(r=>r.State is "released" or "failed" or "unavailable").Take(100).ToList();
-                safetyTask=service.DeviceEvents(Configuration.DeviceToken,batch,cancel.Token,submittedSafetyResults);
+        // Connection completion and startup have priority over optional features.
+        // A fault in an integration, sound, chat, or recorder cannot skip them.
+        var pairingWasPending=pairTask is not null;
+        if(ConnectionStep("character access",UpdateCharacter) && ConnectionStep("connection replies",CompleteNetwork)) {
+            // Pairing can approve the current character. Advance that barrier
+            // before starting a request, rather than canceling it next frame.
+            if(!pairingWasPending || pairTask is not null || ConnectionStep("character access",TrackCharacter))
+                ConnectionStep("connection request",StartSynchronization);
+        }
+        UpdateStep("safety notices",UploadSafetyNotices);
+        UpdateStep("integrations",integrations.Update);
+        UpdateStep("chat input",chatTwo.Update);
+        UpdateStep("local interactions",V6.Update);
+        UpdateStep("Sleep",()=>sleep.Update(GuardAvailable && sleepInput.Available));
+        UpdateStep("sounds",Sounds.Update);
+        UpdateStep("private chat",()=>{if(!PrivateChat.IsOpen)PrivateChat.Session.Tick(false);});
+        UpdateStep("inventory",()=>{
+            if(SharingAllowed && Ready && inventoryDirty && Environment.TickCount64>=inventoryAfter) {
+                try{pendingInventory=InventoryReader.Capture(this);inventoryDirty=false;}
+                catch{inventoryAfter=Environment.TickCount64+15000;throw;}
             }
-            if(Ready && SharingAllowed && Environment.TickCount64>=nextEvaluation) {
-                nextEvaluation=Environment.TickCount64+1000;
-                // Compute on a copy, then persist the whole change atomically.
-                var prompts=JsonSerializer.Deserialize<List<Prompt>>(JsonSerializer.Serialize(Configuration.Prompts,ServiceClient.Json),ServiceClient.Json)!;
-                if(LocalState.Refresh(Configuration.Reminders,prompts,Now) && !Mutate(c=>c.Prompts=prompts))Configuration.Prompts=prompts;
-                ScheduleError="";
+        });
+        UpdateStep("gameplay state",UpdateLockResult);
+        UpdateStep("activity",()=>recorder.Update(Observe));
+        UpdateStep("travel",()=>travel.Update(Observe));
+        UpdateStep("update notices",UpdateNotices);
+        UpdateStep("reminder schedules",RefreshSchedules);
+        if(!UpdateStep("input guard",()=>{if(GuardRequested)input.SuppressKeyboardOnFrameworkUpdate();else input.Release();}))
+            input.Release();
+    }
+    private void UpdateCharacter()
+    {
+        var logged=ClientState.IsLoggedIn;
+        if(logged && !previousLogin && SharingAllowed)StartSession("first-observed");
+        if(!logged && previousLogin){localRelease=false;sessionId="";loginAt="";loginSource="";nextSync=0;input.Release();}
+        previousLogin=logged;
+        TrackCharacter();
+    }
+    private void UpdateNotices()
+    {
+        updates.Update();
+        if(Ready && !changesShown) {
+            if(changesEligible==0)changesEligible=Environment.TickCount64+3000;
+            if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.6.0.2")changes.IsOpen=true;}
+        } else if(!Ready)changesEligible=0;
+    }
+    private void UploadSafetyNotices()
+    {
+        // Only explicit safety notices use this route. It carries no observation
+        // and remains usable while the kill switch pauses normal synchronization.
+        if(IsPaired && safetyTask is null && (Configuration.SafetyOutbox.Count>0 || KillSwitchOn&&Configuration.FeatureResults.Any(r=>r.State is "released" or "failed" or "unavailable")) && Environment.TickCount64>=nextSafetySync) {
+            nextSafetySync=Environment.TickCount64+15000;
+            var batch=JsonSerializer.Deserialize<List<Choice>>(JsonSerializer.Serialize(Configuration.SafetyOutbox.Take(20),ServiceClient.Json),ServiceClient.Json)!;
+            submittedSafetyResults=Configuration.FeatureResults.Where(r=>r.State is "released" or "failed" or "unavailable").Take(100).ToList();
+            safetyTask=service.DeviceEvents(Configuration.DeviceToken,batch,cancel.Token,submittedSafetyResults);
+    }
+    }
+    private void RefreshSchedules()
+    {
+        if(Ready && SharingAllowed && Environment.TickCount64>=nextEvaluation) {
+            nextEvaluation=Environment.TickCount64+1000;
+            // Compute on a copy, then persist the whole change atomically.
+            var prompts=JsonSerializer.Deserialize<List<Prompt>>(JsonSerializer.Serialize(Configuration.Prompts,ServiceClient.Json),ServiceClient.Json)!;
+            if(LocalState.Refresh(Configuration.Reminders,prompts,Now) && !Mutate(c=>c.Prompts=prompts))Configuration.Prompts=prompts;
+            ScheduleError="";
+    }
+    }
+    private void StartSynchronization()
+    {
+        var syncTick=Environment.TickCount64;
+        if(masterInput.Enabled && IsPaired && !NetworkBusy && syncTick>=syncRetryUntil
+            && syncTick>=lastSyncStarted+1000 && (syncTick>=nextSync || activityUploadRequested)) {
+            nextSync=syncTick+5000;lastSyncStarted=syncTick;
+            var batch=JsonSerializer.Deserialize<List<Choice>>(JsonSerializer.Serialize((SharingAllowed?Configuration.Outbox.Take(20):[]),ServiceClient.Json),ServiceClient.Json)!;
+            var flush=activityUploadRequested || syncTick>=nextActivityFlush || Configuration.ActivityOutbox.Count>=50;
+            var activity=flush && SharingAllowed?Configuration.ActivityOutbox.Take(50).ToList():[];
+            submittedActivity=activity.Count>0;
+            if(flush){nextActivityFlush=syncTick+60000;activityUploadRequested=false;}
+            Observation? current=null;
+            if(SharingAllowed)UpdateStep("game status",()=>current=Observe());
+            var reportQueueSaved=freshReportRequestId is null || UpdateStep("report queue",()=>{if(!recorder.FlushForReport())throw new IOException("Saved activity is waiting for local persistence.");});
+            if(SharingAllowed && freshReportRequestId is not null){activity=Configuration.ActivityOutbox.Take(50).ToList();submittedActivity=activity.Count>0;}
+            submittedObservation=SharingAllowed && current is not null && observationUpload.NeedsSnapshot(current,syncTick,activity.Any(a=>a.Kind is not "interval" and not "position"),batch.Count>0,liveReportsRequested,freshReportRequestId is not null)?current:null;
+            submittedReportRequestId=SharingAllowed && freshReportRequestId is not null && reportQueueSaved && Configuration.ActivityOutbox.Count<=50 && Configuration.Outbox.Count<=20?freshReportRequestId:null;
+            syncRevision=masterInput.Revision;syncCharacterRevision=characterRevision;submittedInventoryAt=pendingInventory?.CapturedAtUtc??"";submittedCatalog=integrations.Catalog;
+            submittedResults=SharingAllowed?JsonSerializer.Deserialize<List<FeatureResult>>(JsonSerializer.Serialize(Configuration.FeatureResults.Take(100),ServiceClient.Json),ServiceClient.Json)!:[];
+            if(Configuration.LastSyncAtUtc is null) {
+                ServiceStatus="Paired. Connecting to service…";
+                Log.Information("Pet Service initial synchronization request started; game status included: {Included}.",submittedObservation is not null);
             }
-            var syncTick=Environment.TickCount64;
-            if(masterInput.Enabled && IsPaired && !NetworkBusy && syncTick>=syncRetryUntil
-                && syncTick>=lastSyncStarted+1000 && (syncTick>=nextSync || activityUploadRequested)) {
-                nextSync=syncTick+5000;lastSyncStarted=syncTick;
-                var batch=JsonSerializer.Deserialize<List<Choice>>(JsonSerializer.Serialize((SharingAllowed?Configuration.Outbox.Take(20):[]),ServiceClient.Json),ServiceClient.Json)!;
-                var flush=activityUploadRequested || syncTick>=nextActivityFlush || Configuration.ActivityOutbox.Count>=50;
-                var activity=flush && SharingAllowed?Configuration.ActivityOutbox.Take(50).ToList():[];
-                submittedActivity=activity.Count>0;
-                if(flush){nextActivityFlush=syncTick+60000;activityUploadRequested=false;}
-                var current=Observe();
-                var reportQueueSaved=freshReportRequestId is null || recorder.FlushForReport();
-                if(SharingAllowed && freshReportRequestId is not null){activity=Configuration.ActivityOutbox.Take(50).ToList();submittedActivity=activity.Count>0;}
-                submittedObservation=SharingAllowed && observationUpload.NeedsSnapshot(current,syncTick,activity.Any(a=>a.Kind is not "interval" and not "position"),batch.Count>0,liveReportsRequested,freshReportRequestId is not null)?current:null;
-                submittedReportRequestId=SharingAllowed && freshReportRequestId is not null && reportQueueSaved && Configuration.ActivityOutbox.Count<=50 && Configuration.Outbox.Count<=20?freshReportRequestId:null;
-                syncRevision=masterInput.Revision;syncCharacterRevision=characterRevision;submittedInventoryAt=pendingInventory?.CapturedAtUtc??"";submittedCatalog=integrations.Catalog;
-                submittedResults=SharingAllowed?JsonSerializer.Deserialize<List<FeatureResult>>(JsonSerializer.Serialize(Configuration.FeatureResults.Take(100),ServiceClient.Json),ServiceClient.Json)!:[];
-                syncTask=service.Sync(Configuration.DeviceToken,submittedObservation,batch,activity,submittedReportRequestId,
-                    new{revision=Configuration.AccessRevision,state=KillSwitchOn?"paused":!ClientState.IsLoggedIn?"logged-out":CurrentCharacterId.Length==0?"waiting":CharacterAllowed?"allowed":"unapproved",characterId=CharacterAllowed?CurrentCharacterId:"",characters=Configuration.Characters.Where(c=>c.Allowed).Select(c=>new{id=c.Id,name=c.Name,homeWorld=c.HomeWorld}).ToList()},
-                    SharingAllowed?pendingInventory:null,SharingAllowed?integrations.Catalog:null,submittedResults,SharingAllowed?Configuration.TaskEvents.Take(100).ToList():[],masterInput.RequestCancellation,SharingAllowed?integrations.Icons:null,SharingAllowed?Configuration.V6Outbox.Take(50).ToList():[]);
-            }
-            if(GuardRequested)input.SuppressKeyboardOnFrameworkUpdate();else input.Release();
-        } catch {input.Release();ScheduleError="Could not evaluate the current schedule or game state. Open settings to inspect the connection; emergency release remains available.";}
+            syncTask=service.Sync(Configuration.DeviceToken,submittedObservation,batch,activity,submittedReportRequestId,
+                new{revision=Configuration.AccessRevision,state=KillSwitchOn?"paused":!ClientState.IsLoggedIn?"logged-out":CurrentCharacterId.Length==0?"waiting":CharacterAllowed?"allowed":"unapproved",characterId=CharacterAllowed?CurrentCharacterId:"",characters=Configuration.Characters.Where(c=>c.Allowed).Select(c=>new{id=c.Id,name=c.Name,homeWorld=c.HomeWorld}).ToList()},
+                SharingAllowed?pendingInventory:null,SharingAllowed?integrations.Catalog:null,submittedResults,SharingAllowed?Configuration.TaskEvents.Take(100).ToList():[],masterInput.RequestCancellation,SharingAllowed?integrations.Icons:null,SharingAllowed?Configuration.V6Outbox.Take(50).ToList():[]);
+    }
     }
     private void CompleteNetwork()
     {
@@ -470,6 +529,7 @@ public sealed class Plugin : IDalamudPlugin
                 if(!masterInput.Accepts(syncRevision) || syncCharacterRevision!=characterRevision)return;
                 if(result.PetId!=Configuration.PetId)throw new ServiceFailure("Profile mismatch.");
                 var serverTime=LocalState.Parse(result.ServerTimeUtc);
+                var firstSynchronization=Configuration.LastSyncAtUtc is null;
                 if(Mutate(c=>{
                     foreach(var r in result.RejectedActivity.Where(r=>!r.Retryable)){var e=c.ActivityOutbox.FirstOrDefault(e=>e.Id==r.Id);if(e is not null){c.Recovery.Add(new(){Id=e.Id,Kind="activity",Code=r.Code,Payload=JsonSerializer.Serialize(e,ServiceClient.Json),PetId=c.PetId});c.ActivityOutbox.Remove(e);}}
                     foreach(var r in result.RejectedEvents.Where(r=>!r.Retryable)){var e=c.Outbox.FirstOrDefault(e=>e.Id==r.Id);if(e is not null){c.Recovery.Add(new(){Id=e.Id,Kind="reply",Code=r.Code,Payload=JsonSerializer.Serialize(e,ServiceClient.Json),PetId=c.PetId});c.Outbox.Remove(e);}}
@@ -488,7 +548,8 @@ public sealed class Plugin : IDalamudPlugin
                 })){
                     if(submittedObservation is not null)observationUpload.Accepted(submittedObservation,Environment.TickCount64);
                     submittedObservation=null;syncRetryUntil=0;if(pendingInventory?.CapturedAtUtc==submittedInventoryAt)pendingInventory=null;integrations.AcceptedCatalog(submittedCatalog);integrations.AcceptedIcons(result.Features.AcceptedIconIds);integrations.RejectedIcons(result.Features.RejectedIconIds);
-                    ServiceStatus=CharacterAllowed?"Connected.":$"This character is not enabled. {MasterName} controls are paused.";
+                    ServiceStatus=CharacterAllowed?(frameSteps.FailedSteps.Contains("game status")?"Connected. Game status is temporarily unavailable and will retry.":"Connected."):$"This character is not enabled. {MasterName} controls are paused.";
+                    if(firstSynchronization)Log.Information("Pet Service initial synchronization response applied.");
                     if(result.Features.InventoryRequest is {ValueKind:JsonValueKind.Object} request && request.TryGetProperty("id",out var rid) && rid.GetString()!=inventoryRequestId){inventoryRequestId=rid.GetString()??"";MarkInventoryDirty();}
                     DeliverChat(result.ChatMessages);V6.NotifyChanges();
                     var liveStarted=!liveReportsRequested && result.LiveReportsRequested;
@@ -498,15 +559,19 @@ public sealed class Plugin : IDalamudPlugin
                     else if(liveStarted)nextSync=0;
                     if(submittedActivity && Configuration.ActivityOutbox.Count>0)activityUploadRequested=true;
                     if(Configuration.ActivityOutbox.Count>=50)nextSync=Environment.TickCount64+1000;
+                } else {
+                    ServiceStatus="Service replied, but synchronization could not be saved locally. Retrying.";
+                    syncRetryUntil=nextSync=Environment.TickCount64+15000;
                 }
             } catch(ServiceFailure e) {
                 if(!masterInput.Accepts(syncRevision) || syncCharacterRevision!=characterRevision)return;
                 observationUpload.Reset();
                 if(e.Revoked){Mutate(c=>{c.Revoked=true;c.RevocationConfirmed=true;});integrations.Release();input.Release();ServiceStatus="Device authorization was revoked. Request a new pairing code.";}
                 else {if(e.Message=="STALE_DEVICE_STATE")VerifyConnection();ServiceStatus=$"Synchronization failed ({e.ConnectionDetail}). Cached reminders and saved choices remain local.";Log.Warning("Pet Service synchronization failed: {Detail}",e.ConnectionDetail);syncRetryUntil=nextSync=Environment.TickCount64+15000;activityUploadRequested=true;}
-            } catch {
+            } catch(Exception error) {
                 if(!masterInput.Accepts(syncRevision) || syncCharacterRevision!=characterRevision)return;
                 observationUpload.Reset();
+                Log.Warning(error,"Pet Service could not complete synchronization; retrying.");
                 ServiceStatus="Could not synchronize. Cached reminders and saved choices remain local.";syncRetryUntil=nextSync=Environment.TickCount64+15000;activityUploadRequested=true;
             }
         }

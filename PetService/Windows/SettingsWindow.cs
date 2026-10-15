@@ -31,7 +31,7 @@ internal sealed class SettingsWindow : Window,IDisposable
     private void DrawContent()
     {
         EditingText=false;
-        Style.Title("PET SERVICE","Pet and Master controls · 0.6.0.1");
+        Style.Title("PET SERVICE","Pet and Master controls · 0.6.0.2");
         ImGui.BeginChild("PetServiceMain",new Vector2(0,-85),false);
         var masterShown=false;
         if(ImGui.BeginTabBar("roles")) {
@@ -81,7 +81,9 @@ internal sealed class SettingsWindow : Window,IDisposable
         if(ImGui.BeginTabItem("Characters",selectCharacters?ImGuiTabItemFlags.SetSelected:0)){selectCharacters=false;features.Characters();ImGui.EndTabItem();}
         if(!paused && ImGui.BeginTabItem("Tasks")){features.Tasks();EditingText|=features.EditingText;ImGui.EndTabItem();}
         if(ImGui.BeginTabItem("Setup")) {
-            ImGui.TextWrapped(plugin.ServiceStatus);ImGui.Separator();
+            ImGui.TextWrapped(plugin.ServiceStatus);
+            if(plugin.UpdateError.Length>0)ImGui.TextWrapped(plugin.UpdateError);
+            ImGui.Separator();
             if(!plugin.IsPaired){ImGui.InputText("Pairing code",ref code,80,ImGuiInputTextFlags.Password);EditingText|=ImGui.IsItemActive();ImGui.BeginDisabled(plugin.NetworkBusy || code.Length==0);if(ImGui.Button("Pair this device")){plugin.Pair(code);code="";}ImGui.EndDisabled();}
             else {ImGui.TextUnformatted("Paired as "+plugin.Configuration.PetName);if(ImGui.Button("Unpair…"))ImGui.OpenPopup("Unpair this device?");}
             var open=true;if(ImGui.BeginPopupModal("Unpair this device?",ref open,ImGuiWindowFlags.AlwaysAutoResize)) {

@@ -3,7 +3,7 @@
     "Author": "Anomaly",
     "Name": "Pet Service",
     "InternalName": "PetService",
-    "AssemblyVersion": "0.6.0.1",
+    "AssemblyVersion": "0.6.0.2",
     "Description": "A private companion for consensual pet/master play. Doors remember their keys; whispers and footsteps find their place. The pet keeps a local kill switch.",
     "ApplicableVersion": "any",
     "Tags": [
@@ -23,8 +23,8 @@
     "RepoUrl": "https://github.com/anomalousgamer/PetService",
     "Changelog": "Master broke something but it should be fixed now.",
     "IsHide": false,
-    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.6.0.1/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.6.0.1/latest.zip",
+    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.6.0.2/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.6.0.2/latest.zip",
     "LastUpdate": 1792104678,
     "IconUrl": "https://raw.githubusercontent.com/anomalousgamer/PetService/main/images/icon.png"
   }

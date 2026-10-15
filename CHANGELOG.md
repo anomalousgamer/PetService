@@ -1,8 +1,12 @@
 # Changelog
 
-## 0.6.0.1
+## 0.6.0.2
 
 - Master broke something but it should be fixed now.
+
+## 0.6.0.1
+
+Master broke something but it should be fixed now.
 
 ## 0.6.0.0 — Promises and little treasures
 
