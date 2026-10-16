@@ -16,9 +16,12 @@ internal sealed class PrivateChatWindow:Window,IDisposable
  private sealed record DialogTarget(string Kind,string Id,int Generation,string Name,string Scope,bool Master);
  internal bool EditingText{get;private set;}
  internal PrivateChatWindow(Plugin plugin):base("Private RP chat###PetServicePrivateChat")
- {this.plugin=plugin;Session=new(plugin);SizeConstraints=new(){MinimumSize=new(700,480),MaximumSize=new(float.MaxValue)};}
+ {this.plugin=plugin;Session=new(plugin);Session.OpenConversationRequested=id=>{settings=false;dialog=null;IsOpen=true;Session.Choose(id);focusComposer=true;};SizeConstraints=new(){MinimumSize=new(700,480),MaximumSize=new(float.MaxValue)};}
  internal void OpenPet(){master=false;settings=false;dialog=null;Session.SetAccount(false,plugin.Configuration.PetName,"");IsOpen=true;}
  internal void OpenMaster(string name,string secret){master=true;pet=name;password="";settings=false;dialog=null;Session.SetAccount(true,name,secret);IsOpen=true;}
+ internal void WatchMaster(string name,string secret){if(!IsOpen&&secret.Length>0&&!Session.MatchesAccount(true,name,secret)){master=true;pet=name;Session.SetAccount(true,name,secret);}}
+ internal int UnreadFor(bool asMaster,string name)=>Session.Master==asMaster&&Session.Pet==name?Session.UnreadCount:0;
+ internal void OpenMasterDefault(){master=true;settings=false;dialog=null;if(!Session.Master)Session.SetAccount(true,pet,"");IsOpen=true;}
  internal void OpenDefault(){if(master){settings=false;IsOpen=true;}else OpenPet();}
  public override void PreDraw(){if(!sized){Size=new(Math.Max(700,plugin.Configuration.ChatWindow.Width),Math.Max(480,plugin.Configuration.ChatWindow.Height));SizeCondition=ImGuiCond.FirstUseEver;sized=true;}Style.ApplyTheme(plugin.Configuration.Features.Identity.Theme);Style.Push();}
  public override void PostDraw()=>Style.Pop();
@@ -29,16 +32,16 @@ internal sealed class PrivateChatWindow:Window,IDisposable
  }
  private void DrawContents()
  {
-  lastSize=ImGui.GetWindowSize();EditingText=ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);Session.Tick(!ImGui.GetIO().AppFocusLost);files.Draw();
+  lastSize=ImGui.GetWindowSize();EditingText=ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);Session.ViewingConversation=!settings&&EditingText&&!ImGui.GetIO().AppFocusLost;Session.Tick(!ImGui.GetIO().AppFocusLost);files.Draw();
   if(master&&Session.Vault is null&&!Session.HasCredential){Style.Title("Master RP chat","Unlock this chat session.");ImGui.InputText("Pet profile",ref pet,32);ImGui.InputText("Master password",ref password,4096,ImGuiInputTextFlags.Password);if(ImGui.Button("Unlock chat")&&pet.Length>0&&password.Length>0){Session.SetAccount(true,pet,password);password="";}return;}
-  Style.Title("PRIVATE RP CHAT",master?pet:plugin.Configuration.PetName);
+  Style.Title("PRIVATE RP CHAT",(master?pet:plugin.Configuration.PetName)+(Session.UnreadCount>0?" · "+Session.UnreadCount+" unread":""));
   if(ImGui.Button(settings?"Back to conversations":"Chat settings"))settings=!settings;
   if(master){ImGui.SameLine();if(ImGui.Button("Lock chat")){Session.Lock();dialog=null;return;}}
   ImGui.SameLine();ImGui.TextColored(Style.Muted,Session.Paused?"Chat paused for character access":!Session.Ready?"Connecting…":Session.Preferences.GlobalPaused?"My chat is paused":"Connected · encrypted");
   ImGui.Separator();
   if(Session.Paused){ImGui.TextWrapped(plugin.IsPaired?"Private chat is paused on this unapproved character. Return to an approved character to resume.":"Pair this device on Pet → Setup to use private chat.");return;}
   if(Session.Vault is null){ImGui.TextWrapped(Session.Error.Length>0?Session.Error:"Opening protected chat storage…");return;}
-  if(settings)DrawSettings();else DrawChat();
+  if(settings)DrawSettings();else{DrawChat();Session.MarkRead();}
   ImGui.Separator();
   if(Session.Error.Length>0)ImGui.TextWrapped(Session.Error);
   else ImGui.TextWrapped(Session.PreferencesSaving?"Saving chat preferences…":Session.Notice.Length>0?Session.Notice:"Enter sends · Shift+Enter adds a line");
@@ -56,7 +59,7 @@ internal sealed class PrivateChatWindow:Window,IDisposable
    for(var i=0;i<conversations.Count;i++){
     var thread=conversations[i];var label=Label(thread,i);if(search.Length>0&&!label.Contains(search,StringComparison.OrdinalIgnoreCase))continue;
     ImGui.PushID(thread.Id);try{
-     var suffix=Session.DeletionPending(thread.Id)?" · deleting…":Session.Preferences.Paused.Contains(thread.Id)?" · paused":Session.Preferences.Muted.Contains(thread.Id)?" · muted":"";
+     var suffix=(Session.IsUnread(thread.Id)?" · unread":"")+(Session.DeletionPending(thread.Id)?" · deleting…":Session.Preferences.Paused.Contains(thread.Id)?" · paused":Session.Preferences.Muted.Contains(thread.Id)?" · muted":"");
      if(ImGui.Selectable(label+suffix,Session.Room==thread.Id))Session.Choose(thread.Id);
      ConversationMenu(thread,label);
     }finally{ImGui.PopID();}
@@ -87,12 +90,12 @@ internal sealed class PrivateChatWindow:Window,IDisposable
   try{if(visible){if(Session.More){ImGui.BeginDisabled(Session.Busy);try{if(ImGui.SmallButton("Load older messages"))Session.Poll(true);}finally{ImGui.EndDisabled();}}var bottom=ImGui.GetScrollY()>=ImGui.GetScrollMaxY()-8;transcript.Draw(Session.Messages);if(bottom)ImGui.SetScrollHereY(1);}}finally{ImGui.EndChild();}
   ImGui.InvisibleButton("Resize message box",new(-1,8));if(ImGui.IsItemHovered()||ImGui.IsItemActive())ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNs);if(ImGui.IsItemActive())plugin.Configuration.ChatWindow.Composer=Math.Clamp(height-ImGui.GetIO().MouseDelta.Y,60,Math.Max(60,available*.55f));
   var vault=Session.Vault!;ImGui.SetNextItemWidth(220*ImGuiHelpers.GlobalScale);
-  if(ImGui.BeginCombo("Speaking as",vault.Personas.FirstOrDefault(p=>p.Id==vault.Active)?.Name??vault.Personas.FirstOrDefault()?.Name??"Choose name")){try{foreach(var persona in vault.Personas)if(ImGui.Selectable(persona.Name,persona.Id==vault.Active)){vault.Active=persona.Id;Session.Save();}}finally{ImGui.EndCombo();}}
+  if(ImGui.BeginCombo("Speaking as",vault.Personas.FirstOrDefault(p=>p.Id==vault.Active)?.Name??vault.Personas.FirstOrDefault()?.Name??"Choose name")){try{foreach(var persona in vault.Personas)if(ImGui.Selectable(persona.Name,persona.Id==vault.Active)){Session.ChoosePersona(persona.Id);focusComposer=true;}}finally{ImGui.EndCombo();}}
   ImGui.BeginDisabled(Session.Paused||Session.ConversationPaused(Session.Room)||Session.DeletionPending(Session.Room));
   try{
    var text=Session.Draft;var io=ImGui.GetIO();var ctrl=io.KeyCtrl;bool enter;
-   try{if(focusComposer){ImGui.SetKeyboardFocusHere();focusComposer=false;}if(io.KeyShift&&ImGui.IsKeyDown(ImGuiKey.Enter))io.KeyCtrl=true;enter=ImGui.InputTextMultiline("##RP composer",ref text,10000,new(-1,height),ImGuiInputTextFlags.EnterReturnsTrue|ImGuiInputTextFlags.CtrlEnterForNewLine);}finally{io.KeyCtrl=ctrl;}
-   EditingText|=ImGui.IsItemActive();if(text!=Session.Draft){Session.Draft=text;Session.StoreDraft();}if(enter)Session.Send();if(ImGui.Button("Send message"))Session.Send();ImGui.SameLine();ImGui.TextColored(Style.Muted,"Enter sends · Shift+Enter adds a line");
+   try{if(focusComposer){if(!ImGui.IsMouseClicked(ImGuiMouseButton.Left)&&!ImGui.IsMouseClicked(ImGuiMouseButton.Right))ImGui.SetKeyboardFocusHere();focusComposer=false;}if(io.KeyShift&&ImGui.IsKeyDown(ImGuiKey.Enter))io.KeyCtrl=true;enter=ImGui.InputTextMultiline("##RP composer",ref text,10000,new(-1,height),ImGuiInputTextFlags.EnterReturnsTrue|ImGuiInputTextFlags.CtrlEnterForNewLine);}finally{io.KeyCtrl=ctrl;}
+   EditingText|=ImGui.IsItemActive();if(text!=Session.Draft){Session.Draft=text;Session.StoreDraft();}if(enter){Session.Send();focusComposer=true;}if(ImGui.Button("Send message")){Session.Send();focusComposer=true;}ImGui.SameLine();ImGui.TextColored(Style.Muted,"Enter sends · Shift+Enter adds a line");
   }finally{ImGui.EndDisabled();}
  }
  private void DrawSettings()
@@ -111,17 +114,29 @@ internal sealed class PrivateChatWindow:Window,IDisposable
   Style.Title("My chat connection","These controls affect your side of private RP chat.");var pause=Session.Preferences.GlobalPaused;
   ImGui.BeginDisabled(!Session.Ready);try{if(ImGui.Checkbox("Pause my RP chat",ref pause))Session.Preference(global:pause);}finally{ImGui.EndDisabled();}
   ImGui.TextWrapped("Pausing holds new sending and receiving in all of your conversations. The other participant can keep writing; their messages arrive when you resume.");
+  ImGui.Spacing();Style.Title("Startup","Choose which private RP chat window opens when you log in.");DrawLoginSettings();
+  ImGui.Spacing();Style.Title("Notifications","Unread markers remain until you view the conversation. Muting hides notices without stopping messages.");var toasts=plugin.Configuration.PrivateChatToastNotifications;if(ImGui.Checkbox("Show chat popup notifications",ref toasts))plugin.Mutate(c=>c.PrivateChatToastNotifications=toasts);var log=plugin.Configuration.PrivateChatLogNotifications;if(ImGui.Checkbox("Show generic notices in game chat",ref log))plugin.Mutate(c=>c.PrivateChatLogNotifications=log);
   ImGui.Spacing();Style.Title("Conversation controls","Right-click a conversation to rename, mute, pause or delete it.");
   ImGui.TextWrapped("Mute notifications keeps messages arriving without new-message alerts. Pause conversation holds sending and receiving for that conversation. These preferences synchronize across your devices.");
   ImGui.Spacing();ImGui.TextWrapped("The gameplay kill switch and Sleep do not pause RP chat. An unapproved character pauses the pet's chat connection.");
  }
+ internal void DrawLoginSettings()
+ {
+  var role=plugin.Configuration.PrivateChatLoginRole;var label=role switch{ChatLoginRole.Pet=>"Pet",ChatLoginRole.Master=>"Master",_=>"Off"};
+  ImGui.SetNextItemWidth(190*ImGuiHelpers.GlobalScale);
+  if(ImGui.BeginCombo("Open RP chat on character login",label)){
+   try{foreach(var choice in Enum.GetValues<ChatLoginRole>())if(ImGui.Selectable(choice.ToString(),role==choice))plugin.Mutate(c=>c.PrivateChatLoginRole=choice);}
+   finally{ImGui.EndCombo();}
+  }
+  ImGui.TextWrapped("Opens once after your character finishes loading. Changes apply at the next character login.");
+ }
  private void NameSettings()
  {
-  var vault=Session.Vault!;Style.Title("Speaking names","Save names and colors here. Choose one above the message box while writing. Earlier messages keep their original name and color.");
+  var vault=Session.Vault!;Style.Title("Speaking names","Names and colors synchronize securely across your devices. Choose one above the message box while writing. Earlier messages keep their original name and color.");
   foreach(var persona in vault.Personas.ToList()){
-   ImGui.PushID(persona.Id);try{var name=persona.Name;ImGui.SetNextItemWidth(250*ImGuiHelpers.GlobalScale);if(ImGui.InputText("Name",ref name,60)){persona.Name=name;Session.Save();}EditingText|=ImGui.IsItemActive();var color=persona.Color;if(Style.ColorField("Name color",ref color)){persona.Color=color;Session.Save();}ImGui.BeginDisabled(vault.Personas.Count<=1);try{if(ImGui.Button("Remove name")){vault.Personas.Remove(persona);Session.Save();}}finally{ImGui.EndDisabled();}ImGui.Separator();}finally{ImGui.PopID();}
+   ImGui.PushID(persona.Id);try{var name=persona.Name;ImGui.SetNextItemWidth(250*ImGuiHelpers.GlobalScale);if(ImGui.InputText("Name",ref name,60)){persona.Name=name;Session.SaveNames();}EditingText|=ImGui.IsItemActive();var color=persona.Color;if(Style.ColorField("Name color",ref color)){persona.Color=color;Session.SaveNames();}ImGui.BeginDisabled(vault.Personas.Count<=1);try{if(ImGui.Button("Remove name")){vault.Personas.Remove(persona);Session.SaveNames();}}finally{ImGui.EndDisabled();}ImGui.Separator();}finally{ImGui.PopID();}
   }
-  if(vault.Personas.Count<40&&ImGui.Button("+ Add speaking name")){vault.Personas.Add(new());Session.Save();}
+  if(vault.Personas.Count<40&&ImGui.Button("+ Add speaking name")){vault.Personas.Add(new());Session.SaveNames();}
  }
  private void BackupSettings()
  {
@@ -163,6 +178,6 @@ internal sealed class PrivateChatWindow:Window,IDisposable
    ImGui.SameLine();if(ImGui.Button("Cancel")){dialog=null;ImGui.CloseCurrentPopup();}
   }finally{ImGui.EndPopup();}
  }
- public override void OnClose(){EditingText=false;dialog=null;try{Session.StoreDraft();var size=lastSize;plugin.Mutate(c=>{c.ChatWindow.Width=size.X;c.ChatWindow.Height=size.Y;});}catch{}}
+ public override void OnClose(){Session.ViewingConversation=false;EditingText=false;dialog=null;try{Session.StoreDraft();var size=lastSize;plugin.Mutate(c=>{c.ChatWindow.Width=size.X;c.ChatWindow.Height=size.Y;});}catch{}}
  public void Dispose(){try{Session.Dispose();}finally{try{files.Reset();}finally{password=backupPassword="";}}}
 }

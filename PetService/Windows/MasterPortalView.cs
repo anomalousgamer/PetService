@@ -42,7 +42,7 @@ internal sealed class MasterPortalView : IDisposable
             ImGui.BeginDisabled(session.Busy);Input("Administrator password",ref password,4096,true);
             ImGui.BeginDisabled(password.Length==0);
             if(Style.PrimaryButton("Unlock Master portal",new Vector2(-1,42))){session.Unlock(password);password="";}
-            ImGui.EndDisabled();ImGui.EndDisabled();ImGui.TextWrapped("Closing the window or locking clears this session’s password.");
+            ImGui.EndDisabled();ImGui.EndDisabled();ImGui.TextWrapped("Unlocked until you choose Lock portal or close the game. Closing this window keeps the session.");
             DrawFeedback();Style.EndCard();return;
         }
         var dashboard=session.Dashboard!;Style.ApplyTheme(dashboard.Identity.Theme);
@@ -71,7 +71,7 @@ internal sealed class MasterPortalView : IDisposable
         var detail=dashboard.Selected;
         if(detail is null||detail.Name!=session.Selected){ImGui.TextWrapped(dashboard.Profiles.Count==0?"Add a pet profile, then generate a pairing code on Profile to connect their plugin.":"Choose a profile to open its Master controls.");session.Hide();return;}
         ImGui.TextColored(Style.Muted,detail.Name+" · "+MasterPortalPolicy.State(detail,session.Now));
-        if(ImGui.Button("Open private RP chat"))plugin.PrivateChat.OpenMaster(session.Selected,session.ChatCredential);ImGui.SameLine();if(ImGui.Button("Master sounds"))plugin.MasterSounds.Open(session.Selected,session.ChatCredential);
+        plugin.PrivateChat.WatchMaster(session.Selected,session.ChatCredential);var unread=plugin.PrivateChat.UnreadFor(true,session.Selected);if(ImGui.Button("Open private RP chat"+(unread>0?" · "+unread+" unread":"")))plugin.PrivateChat.OpenMaster(session.Selected,session.ChatCredential);ImGui.SameLine();if(ImGui.Button("Master sounds"))plugin.MasterSounds.Open(session.Selected,session.ChatCredential);
         DrawNavigation();
         var viewingOverview=false;var viewingChats=false;var viewingSettings=false;var settingsSection="controls";var settingsCharacter="";
         ImGui.BeginDisabled(session.Busy);

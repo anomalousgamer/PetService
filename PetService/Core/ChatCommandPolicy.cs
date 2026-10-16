@@ -10,7 +10,9 @@ internal static class ChatCommandPolicy
             return false;
         var command = text.Trim();
         return command.Equals("/toh chat", StringComparison.OrdinalIgnoreCase)
-            || command.Equals("/petservice chat", StringComparison.OrdinalIgnoreCase);
+            || command.Equals("/petservice chat", StringComparison.OrdinalIgnoreCase)
+            || command.Equals("/toh chat master", StringComparison.OrdinalIgnoreCase)
+            || command.Equals("/petservice chat master", StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool Allows(string text)

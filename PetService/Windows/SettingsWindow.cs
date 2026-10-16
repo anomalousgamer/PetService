@@ -31,7 +31,7 @@ internal sealed class SettingsWindow : Window,IDisposable
     private void DrawContent()
     {
         EditingText=false;
-        Style.Title("PET SERVICE","Pet and Master controls · 0.6.0.5");
+        Style.Title("PET SERVICE","Pet and Master controls · 0.6.0.6");
         ImGui.BeginChild("PetServiceMain",new Vector2(0,-85),false);
         var masterShown=false;
         if(ImGui.BeginTabBar("roles")) {
@@ -53,7 +53,7 @@ internal sealed class SettingsWindow : Window,IDisposable
         if(paused){Style.Title("Character access paused","This character is not enabled for PetService.");ImGui.TextWrapped("Sharing and "+plugin.MasterName+" controls are paused. To allow access, enable this character on Pet → Characters.");if(ImGui.Button("Open Characters",new Vector2(-1,42)))selectCharacters=true;ImGui.Spacing();}
         if(!ImGui.BeginTabBar("petpages"))return;
         if(!paused && ImGui.BeginTabItem("Home")) {
-            if(ImGui.Button("Open private RP chat"))plugin.PrivateChat.OpenPet();
+            var unread=plugin.PrivateChat.UnreadFor(false,plugin.Configuration.PetName);if(ImGui.Button("Open private RP chat"+(unread>0?" · "+unread+" unread":"")))plugin.PrivateChat.OpenPet();
             features.Home();if(plugin.LockRequested)Style.Metric("Gameplay",plugin.Configuration.Features.Lock?.State??"Queued","petlock");ImGui.Spacing();Style.Title(plugin.IsPaired?plugin.Configuration.PetName:"Welcome home",plugin.ServiceStatus);
             Style.Metric("Your connection",plugin.KillSwitchOn?"Paused":plugin.IsPaired?"Paired":"Setup needed","petconnection");
             ImGui.Spacing();
@@ -120,8 +120,9 @@ internal sealed class SettingsWindow : Window,IDisposable
         ImGui.BeginDisabled(!plugin.Sounds.CanPreview);if(ImGui.Button("Preview uploaded sound"))plugin.Sounds.Preview();ImGui.EndDisabled();
         if(ImGui.Button("Preview in chat"))MasterChatDelivery.Print(plugin.Configuration,"A little message from your "+plugin.MasterName+".");
         ImGui.Spacing();
+        Style.Title("Private RP chat","Choose whether its window opens when you log in.");plugin.PrivateChat.DrawLoginSettings();
     }
     internal void ClearTextFocus(){EditingText=false;master.ClearTextFocus();}
-    public override void OnClose(){code="";EditingText=false;master.Lock();}
+    public override void OnClose(){code="";EditingText=false;master.Hide();}
     public void Dispose(){features.Dispose();master.Dispose();}
 }

@@ -116,6 +116,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly ObservationUploadPolicy observationUpload=new();
     private readonly FrameStepRunner frameSteps=new();
     internal string UpdateError=>frameSteps.FailedSteps.Count==0?"":"Local updates are retrying ("+string.Join(", ",frameSteps.FailedSteps)+"). Details are in the Dalamud log (/xllog).";
+    private readonly ChatLoginStartup chatLoginStartup=new();
     private bool previousLogin, localRelease, disposed;
     private readonly ShutdownSequence shutdown = new();
     private string sessionId = "", loginAt = "", loginSource = "";
@@ -184,7 +185,7 @@ public sealed class Plugin : IDalamudPlugin
         V6=new(this);nativeChat=new(GameGui,Log);chatTwo=new(PluginInterface);sleep=new(this);sleepInput=new(Interop,()=>Sleeping,Log);
         chatCommands=new(Interop,()=>GameplayCaptureActive,Chat,Log);
         chatCommands.Sleeping=()=>Sleeping;
-        chatCommands.SpeechSettings=()=>SharingAllowed && Ready ? Configuration.Dynamic : null;
+        chatCommands.SpeechSettings=()=>SharingAllowed && Ready ? EffectiveSpeech : null;
         recorder=new(this);travel=new(this);
         changes=new(this);windows.AddWindow(changes);
         movement=new(Interop,()=>GameplayCaptureActive,Log);
@@ -200,11 +201,11 @@ public sealed class Plugin : IDalamudPlugin
         ui.Draw+=Draw;ui.OpenConfigUi+=OpenSettings;ui.OpenMainUi+=OpenSettings;
         ClientState.Login+=OnLogin; Framework.Update+=Update;
         Commands.AddHandler("/petservice",new CommandInfo(Command) {HelpMessage="Open Pet/Master pages. /petservice off: confirm kill switch. /petservice on: resume. /petservice release: safe mode for this login. /petservice call: open Contact."});
-        Commands.AddHandler("/toh",new CommandInfo(Command){HelpMessage="Open Pet Service. /toh chat, call, off, on, release, changes, checkupdates."});
+        Commands.AddHandler("/toh",new CommandInfo(Command){HelpMessage="Open Pet Service. /toh chat, chat master, call, off, on, release, changes, checkupdates."});
         previousLogin=ClientState.IsLoggedIn;
         if(previousLogin && SharingAllowed)StartSession("first-observed");
     }
-    private void OnLogin() {if(disposed)return;previousLogin=true;if(SharingAllowed)StartSession("login-event");nextSync=0;nextEvaluation=0;}
+    private void OnLogin() {if(disposed)return;chatLoginStartup.Reset();previousLogin=true;if(SharingAllowed)StartSession("login-event");nextSync=0;nextEvaluation=0;}
     private void StartSession(string source) {sessionId=Guid.NewGuid().ToString();loginAt=LocalState.Stamp(Now);loginSource=source;localRelease=false;}
     private void OpenSettings()=>settings.IsOpen=true;
     internal void OpenContact()=>settings.OpenContact();
@@ -212,6 +213,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         switch(args.Trim().ToLowerInvariant()) {
             case "chat":PrivateChat.OpenDefault();break;
+            case "chat master":PrivateChat.OpenMasterDefault();break;
             case "changes":changes.IsOpen=true;break;
             case "checkupdates":updates.CheckNow();break;
             case "off":SetEnabled(false);break;
@@ -414,7 +416,8 @@ public sealed class Plugin : IDalamudPlugin
         UpdateStep("local interactions",V6.Update);
         UpdateStep("Sleep",()=>sleep.Update(GuardAvailable && sleepInput.Available));
         UpdateStep("sounds",Sounds.Update);
-        UpdateStep("private chat",()=>{if(!PrivateChat.IsOpen)PrivateChat.Session.Tick(false);});
+        UpdateStep("private chat startup",UpdatePrivateChatStartup);
+        UpdateStep("private chat",()=>{if(!PrivateChat.IsOpen){PrivateChat.Session.ViewingConversation=false;PrivateChat.Session.Tick(false);}});
         UpdateStep("inventory",()=>{
             if(SharingAllowed && Ready && inventoryDirty && Environment.TickCount64>=inventoryAfter) {
                 try{pendingInventory=InventoryReader.Capture(this);inventoryDirty=false;}
@@ -429,6 +432,13 @@ public sealed class Plugin : IDalamudPlugin
         if(!UpdateStep("input guard",()=>{if(GuardRequested)input.SuppressKeyboardOnFrameworkUpdate();else input.Release();}))
             input.Release();
     }
+    private void UpdatePrivateChatStartup()
+    {
+        var role=chatLoginStartup.Update(ClientState.IsLoggedIn,CurrentCharacterId,Ready,
+            Configuration.PrivateChatLoginRole,IsPaired,CharacterAllowed);
+        if(role==ChatLoginRole.Pet)PrivateChat.OpenPet();
+        else if(role==ChatLoginRole.Master)PrivateChat.OpenMasterDefault();
+    }
     private void UpdateCharacter()
     {
         var logged=ClientState.IsLoggedIn;
@@ -442,7 +452,7 @@ public sealed class Plugin : IDalamudPlugin
         updates.Update();
         if(Ready && !changesShown) {
             if(changesEligible==0)changesEligible=Environment.TickCount64+3000;
-            if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.6.0.5")changes.IsOpen=true;}
+            if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.6.0.6")changes.IsOpen=true;}
         } else if(!Ready)changesEligible=0;
     }
     private void UploadSafetyNotices()

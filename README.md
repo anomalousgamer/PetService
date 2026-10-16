@@ -1,6 +1,6 @@
 # Pet Service
 
-Author: **Anomaly** · Version **0.6.0.5**
+Author: **Anomaly** · Version **0.6.0.6**
 
 A private Pet/Master connection for FINAL FANTASY XIV. Open **/toh** or **/petservice** for the Pet and password-protected Master pages. The companion website is a separate package. The service connection is included in the plugin; pairing needs only the Master's one-time code.
 
@@ -64,3 +64,17 @@ Guarded conversation deletion opens its confirmation directly in chat, including
 Open RP chat uses an authenticated update connection to react to messages and conversation changes as they occur. It reconnects automatically and falls back to periodic refreshes if the host interrupts the connection. Notifications carry only opaque change markers; message contents remain end-to-end encrypted. Closed chats keep their existing low-frequency metadata checks. This works through ordinary HTTPS requests on the current Node.js host and does not require a WebSocket-capable proxy.
 
 Gag profiles support separate exclusions for **Linkshell 1–8** and **Cross-world Linkshell 1–8**, alongside the existing all-Linkshell and all-Cross-world exclusions. Set them under **Gag profiles → Profile editor → Excluded chat channels** in the Master portal or website. Slot numbers follow the pet's own in-game shell list.
+
+Visible website RP chat stays connected when another window, including the game, has keyboard focus. Hidden browser tabs suspend new chat refresh requests and catch up when shown again. This does not change the focus requirement for live gameplay reports. Version 0.6.0.6 expands private RP chat; existing pairings, encrypted history, and saved settings are preserved.
+
+Saved speaking names and colors synchronize end-to-end encrypted between the same participant's devices in a paired profile. Existing customized lists merge on first connection. The service retains encrypted library records and key envelopes; private library keys stay on participant devices. The Master's saved list is separate from the Pet's. Your currently selected speaking name and unsent drafts remain local to this device. Each conversation has an independent draft for each speaking name; switching names does not send a message or erase another name's draft. Older messages keep the name and color they were sent with.
+
+New private conversations and incoming messages show unread markers. In-game popup notifications can be clicked to open the conversation; generic notices in game chat can be turned off separately under RP Chat → Chat settings → General. Notices contain no RP text, titles, or speaking names. Muting hides notices while leaving unread markers. Pausing holds updates until you resume. The initial history snapshot does not flood notifications, and reconnecting does not repeat already observed alerts. After unlocking Master chat, closing its window leaves notifications connected while the game is focused.
+
+Use `/toh chat master` or `/petservice chat master` to open Master RP chat. It reuses an unlocked Master session or presents the Master sign-in screen. `/toh chat` and `/petservice chat` retain their existing behavior.
+
+On the website, choose **Open in separate tab** in the RP chat header for a dedicated chat tab. The main admin portal stays available. The separate view reuses the browser sign-in session and stores its protected local chat identity separately from the inline view. Existing readable history and saved names are available there; subsequent name changes synchronize with your other devices. The dedicated tab does not request live gameplay reports.
+
+The in-game Master portal stays unlocked for the game session after a successful sign-in. Closing its window, switching pages, logging out, or changing characters keeps that in-memory session. Hidden pages stop requesting live gameplay reports. **Lock portal**, plugin unload, closing the game, or a rejected administrator credential clears the session. The portal password is not saved to plugin configuration.
+
+Choose **Off**, **Pet**, or **Master** under **RP chat → Chat settings → General → Open RP chat on character login**. The same setting is available on **Pet → Setup**, including before pairing. It is saved on this device and defaults to Off. The selected chat opens once after the character finishes loading; closing it or changing zones does not reopen it. Changes apply at the next character login. Pet startup requires a paired, approved character and remains independent of the gameplay kill switch and Sleep. Master startup reuses an existing chat unlock in the current game session or opens its ordinary unlock screen.

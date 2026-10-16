@@ -12,6 +12,9 @@ public sealed class Configuration : IPluginConfiguration
     public List<string> SeenSoundRequests{get;set;}=[];
     public float RemoteSoundVolume{get;set;}=0.5f;
     public Vector2Chat ChatWindow{get;set;}=new();
+    public bool PrivateChatToastNotifications{get;set;}=true;
+    public bool PrivateChatLogNotifications{get;set;}=true;
+    public ChatLoginRole PrivateChatLoginRole{get;set;}=ChatLoginRole.Off;
     public List<AdvancedEvent> V6Outbox{get;set;}=[];
     public HashSet<string> V6ChatIds{get;set;}=[];
     public HashSet<string> PointNoticeIds{get;set;}=[];

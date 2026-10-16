@@ -3,7 +3,7 @@
     "Author": "Anomaly",
     "Name": "Pet Service",
     "InternalName": "PetService",
-    "AssemblyVersion": "0.6.0.5",
+    "AssemblyVersion": "0.6.0.6",
     "Description": "A private companion for consensual pet/master play. Doors remember their keys; whispers and footsteps find their place. The pet keeps a local kill switch.",
     "ApplicableVersion": "any",
     "Tags": [
@@ -21,11 +21,11 @@
     "Punchline": "Consensual pet/master roleplay, messages, and shared routines.",
     "AcceptsFeedback": true,
     "RepoUrl": "https://github.com/anomalousgamer/PetService",
-    "Changelog": "• Paired Pet and Master devices set up encrypted RP chat automatically. Device verification dialogs are removed.\n• New conversation opens straight into the message box on the Pet, Master, and website interfaces.\n• Open chats receive server-triggered updates for new messages, conversation changes, and deletion, with automatic reconnection.\n• Square color pickers with a hue bar replace the triangle wheels throughout the in-game plugin.\n• Gag profiles can exclude each Linkshell and Cross-world Linkshell individually, from slots 1 through 8.",
+    "Changelog": "\u2022 One key may open the door until the lantern goes out.\n\u2022 A name and its chosen shade may travel between mirrors.\n\u2022 Each voice keeps its own unfinished page.\n\u2022 The quill waits beneath your hand after each whisper.\n\u2022 Unopened letters leave a light at the door.\n\u2022 A conversation may keep a window of its own.\n\u2022 A familiar call now reaches the far side of the door.\n\u2022 The mirror listens while your eyes follow other footsteps.\n\u2022 A borrowed voice remembers which doors it may pass unchanged.\n\u2022 At the threshold, choose which whisper wakes beside you.",
     "IsHide": false,
-    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.6.0.5/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.6.0.5/latest.zip",
-    "LastUpdate": 1792104678,
+    "DownloadLinkInstall": "https://github.com/anomalousgamer/PetService/releases/download/v0.6.0.6/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/anomalousgamer/PetService/releases/download/v0.6.0.6/latest.zip",
+    "LastUpdate": 1792115072,
     "IconUrl": "https://raw.githubusercontent.com/anomalousgamer/PetService/main/images/icon.png"
   }
 ]
