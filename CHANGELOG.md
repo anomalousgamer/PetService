@@ -1,8 +1,12 @@
 # Changelog
 
-## 0.6.0.2
+## 0.6.0.3
 
 - Master broke something but it should be fixed now.
+
+## 0.6.0.2
+
+Master broke something but it should be fixed now.
 
 ## 0.6.0.1
 

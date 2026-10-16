@@ -74,5 +74,16 @@ internal sealed class MasterPortalClient : IDisposable
         return JsonSerializer.Deserialize<T>(buffer.ToArray(),ServiceClient.Json) ?? throw new AdminFailure("INVALID_RESPONSE");
     }
     internal Task<T> Comms<T>(string password,string pet,string op,object data,CancellationToken cancel)=>Request<T>("/api/admin/comms",password,new{pet,op,data},cancel);
+    internal async Task<byte[]> SoundBytes(string password,string id,CancellationToken cancel)
+    {
+        using var deadline=CancellationTokenSource.CreateLinkedTokenSource(cancel);deadline.CancelAfter(TimeSpan.FromSeconds(12));cancel=deadline.Token;
+        using var request=new HttpRequestMessage(HttpMethod.Get,ServiceClient.Endpoint(ServiceClient.BaseUrl,"/api/admin/sound?id="+Uri.EscapeDataString(id)));
+        request.Headers.Authorization=new AuthenticationHeaderValue("Basic",Convert.ToBase64String(Encoding.UTF8.GetBytes("admin:"+password)));
+        using var response=await http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,cancel).ConfigureAwait(false);response.EnsureSuccessStatusCode();
+        if(response.Content.Headers.ContentLength is >2000000)throw new AdminFailure("SOUND_TOO_LARGE");
+        await using var stream=await response.Content.ReadAsStreamAsync(cancel).ConfigureAwait(false);using var buffer=new MemoryStream();var chunk=new byte[8192];int read;
+        while((read=await stream.ReadAsync(chunk,cancel).ConfigureAwait(false))>0){if(buffer.Length+read>2000000)throw new AdminFailure("SOUND_TOO_LARGE");await buffer.WriteAsync(chunk.AsMemory(0,read),cancel).ConfigureAwait(false);}
+        return buffer.ToArray();
+    }
     public void Dispose()=>http.Dispose();
 }

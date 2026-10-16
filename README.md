@@ -1,6 +1,6 @@
 # Pet Service
 
-Author: **Anomaly** · Version **0.6.0.2**
+Author: **Anomaly** · Version **0.6.0.3**
 
 A private Pet/Master connection for FINAL FANTASY XIV. Open **/toh** or **/petservice** for the Pet and password-protected Master pages. The companion website is a separate package. The service connection is included in the plugin; pairing needs only the Master's one-time code.
 
@@ -25,7 +25,7 @@ The supplied icon is included in downloads. No AI-generated artwork is included.
 
 The gameplay controls show a remaining-time countdown and retained request/outcome history. Daily reminder previews show each custom reply’s behavior before saving. Honorific and Moodles have separate controls, saved selections, color pickers, previews, and request results. Moodles previews use game icons and descriptions; removal is limited to PetService-managed statuses. Control outcomes are reported to the configured Discord channel.
 
-Sleep requests Play Dead, bonds gameplay, and blocks outgoing native and Chat2 chat. The local Emergency Wake Up button ends that Sleep command; it leaves other Master controls active. Chat notification colors use an RGB wheel.
+Sleep requests Play Dead, bonds gameplay, and blocks outgoing native and Chat2 chat. The local Emergency Wake Up button ends that Sleep command; it leaves other Master controls active. Chat notification colors use a compact selector with a popup color picker.
 
 
 ## Private conversations
@@ -42,7 +42,7 @@ Either participant can delete a selected conversation for both people. The Maste
 
 ## Master sounds
 
-Use **Master sounds** on the Master page to upload, replace, remove and preview your own PCM WAV clips (up to 15 seconds and 2 MB), play them for the selected pet, and assign optional event sounds. The library starts empty and every event starts at None. No generated or bundled audio is supplied. A reward sound plays once per positive award, regardless of the number of points awarded. A clicker is any clip the Master uploads and assigns.
+**Master sounds** on the Master page opens its own window, independently of RP chat. Use it to upload, replace, remove and preview your own PCM WAV clips (up to 15 seconds and 2 MB), play them for the selected pet, and assign optional event sounds. The library starts empty and every event starts at None. No generated or bundled audio is supplied. A reward sound plays once per positive award, regardless of the number of points awarded. A clicker is any clip the Master uploads and assigns.
 
 Optional assignments cover points and milestones, rewards, tasks, reminders and responses, Master messages, bonding, gagging, Sleep, integrations, Contact, and selected activity events. Milestone thresholds, due-soon minutes, cooldowns and location/item filters are configurable. Empty filters match any supported event. The entire shared sound library downloads automatically, including clips with no event assignment, and stays on the machine across logouts, restarts and disconnections. A versioned library snapshot removes deleted clips after the next successful connection, including deletions made while the pet was offline. Replacements download and pass a content-hash check before replacing their old local version. Failed requests keep existing files and retry; confirmed deletions cancel unfinished downloads. Both Master portals show the pet’s latest download and cleanup report. Playback requests expire after ten seconds and old cues are skipped. The pet controls volume from 10–100% in Setup and can preview a cached uploaded clip. The kill switch and unapproved characters stop remote playback.
 

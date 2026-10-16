@@ -4,12 +4,16 @@
     <PetServiceMakeZip Condition="'$(Configuration)' == 'Release'">true</PetServiceMakeZip>
   </PropertyGroup>
   <Target Name="PackagePetService" AfterTargets="Build">
+    <Error Condition="!Exists('$(OutputPath)NAudio.Core.dll')"
+           Text="The required sound library NAudio.Core.dll is missing from the build output. Restore NuGet packages and rebuild." />
+    <Error Condition="!Exists('$(OutputPath)NAudio.WinMM.dll')"
+           Text="The required sound library NAudio.WinMM.dll is missing from the build output. Restore NuGet packages and rebuild." />
     <DalamudPackager ProjectDir="$(ProjectDir)"
                     OutputPath="$(OutputPath)"
                     AssemblyName="$(AssemblyName)"
                     MakeZip="$(PetServiceMakeZip)"
                     HandleImages="false"
-                    Include="$(AssemblyName).dll;$(AssemblyName).deps.json;$(AssemblyName).json;LICENSE.md;images/icon.png"
+                    Include="$(AssemblyName).dll;NAudio.Core.dll;NAudio.WinMM.dll;$(AssemblyName).deps.json;$(AssemblyName).json;LICENSE.md;THIRD_PARTY_NOTICES.md;images/icon.png"
                     Author="$(Author)"
                     Name="$(Name)"
                     MinimumDalamudVersion="$(MinimumDalamudVersion)"

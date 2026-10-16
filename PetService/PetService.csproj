@@ -1,7 +1,7 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.6.0.2</Version>
-    <AssemblyVersion>0.6.0.2</AssemblyVersion>
+    <Version>0.6.0.3</Version>
+    <AssemblyVersion>0.6.0.3</AssemblyVersion>
     <Author>Anomaly</Author>
     <RepoUrl>https://github.com/anomalousgamer/PetService</RepoUrl>
     <IconUrl>https://raw.githubusercontent.com/anomalousgamer/PetService/main/images/icon.png</IconUrl>

@@ -36,6 +36,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly IntegrationBridge integrations;
     internal readonly V6Controller V6;
     internal readonly PrivateChatWindow PrivateChat;
+    internal readonly MasterSoundsWindow MasterSounds;
     internal bool DrawingPrivateChat {get;set;}
     internal bool PrivateChatFocused=>PrivateChat is not null&&PrivateChat.IsOpen&&PrivateChat.EditingText&&!PrivateChat.Session.Paused;
     internal readonly RemoteSounds Sounds;
@@ -188,7 +189,7 @@ public sealed class Plugin : IDalamudPlugin
         changes=new(this);windows.AddWindow(changes);
         movement=new(Interop,()=>GameplayCaptureActive,Log);
         input=new(KeyState,Gamepad,nativeChat,chatCommands,movement,chatTwo,()=>Sleeping,Log);
-        PrivateChat=new(this);Sounds=new(this);windows.AddWindow(PrivateChat);
+        PrivateChat=new(this);Sounds=new(this);MasterSounds=new(this);windows.AddWindow(PrivateChat);windows.AddWindow(MasterSounds);
         sleepInput.DrawingPrivateChat=()=>DrawingPrivateChat;
         sleepInput.PrivateChatFocused=()=>PrivateChatFocused;
         input.PrivateChatFocused=()=>PrivateChatFocused;
@@ -441,7 +442,7 @@ public sealed class Plugin : IDalamudPlugin
         updates.Update();
         if(Ready && !changesShown) {
             if(changesEligible==0)changesEligible=Environment.TickCount64+3000;
-            if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.6.0.2")changes.IsOpen=true;}
+            if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.6.0.3")changes.IsOpen=true;}
         } else if(!Ready)changesEligible=0;
     }
     private void UploadSafetyNotices()
@@ -620,6 +621,7 @@ public sealed class Plugin : IDalamudPlugin
             shutdown.Add("activity hooks and handlers", recorder.Dispose, true);
             shutdown.Add("managed integration effects", integrations.Dispose);
             shutdown.Add("private chat window", PrivateChat.Dispose);
+            shutdown.Add("Master sound window", MasterSounds.Dispose);
             shutdown.Add("remote sounds", Sounds.Dispose);
             shutdown.Add("settings window", settings.Dispose);
             shutdown.Add("service HTTP client", service.Dispose);

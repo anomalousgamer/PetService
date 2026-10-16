@@ -71,7 +71,7 @@ internal sealed class MasterPortalView : IDisposable
         var detail=dashboard.Selected;
         if(detail is null||detail.Name!=session.Selected){ImGui.TextWrapped(dashboard.Profiles.Count==0?"Add a pet profile, then generate a pairing code on Profile to connect their plugin.":"Choose a profile to open its Master controls.");session.Hide();return;}
         ImGui.TextColored(Style.Muted,detail.Name+" · "+MasterPortalPolicy.State(detail,session.Now));
-        if(ImGui.Button("Open private RP chat"))plugin.PrivateChat.OpenMaster(session.Selected,session.ChatCredential);ImGui.SameLine();if(ImGui.Button("Master sounds"))plugin.PrivateChat.OpenMaster(session.Selected,session.ChatCredential,true);
+        if(ImGui.Button("Open private RP chat"))plugin.PrivateChat.OpenMaster(session.Selected,session.ChatCredential);ImGui.SameLine();if(ImGui.Button("Master sounds"))plugin.MasterSounds.Open(session.Selected,session.ChatCredential);
         DrawNavigation();
         var viewingOverview=false;var viewingChats=false;var viewingSettings=false;var settingsSection="controls";var settingsCharacter="";
         ImGui.BeginDisabled(session.Busy);
