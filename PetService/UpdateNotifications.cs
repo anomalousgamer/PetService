@@ -47,7 +47,7 @@ internal sealed class UpdateNotifications(Plugin plugin,bool hadConfiguration)
     private void AnnounceInstalledVersion()
     {
         if(installedVersionRecorded)return;
-        var version=typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "0.6.0.3";
+        var version=typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "0.6.0.4";
         var previous=plugin.Configuration.LastLoadedVersion;
         if(previous==version){installedVersionRecorded=true;return;}
         if(!plugin.Mutate(c=>c.LastLoadedVersion=version))return;

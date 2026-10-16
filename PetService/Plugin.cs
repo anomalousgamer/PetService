@@ -442,7 +442,7 @@ public sealed class Plugin : IDalamudPlugin
         updates.Update();
         if(Ready && !changesShown) {
             if(changesEligible==0)changesEligible=Environment.TickCount64+3000;
-            if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.6.0.3")changes.IsOpen=true;}
+            if(Environment.TickCount64>=changesEligible){changesShown=true;if(Configuration.LastAcknowledgedVersion!="0.6.0.4")changes.IsOpen=true;}
         } else if(!Ready)changesEligible=0;
     }
     private void UploadSafetyNotices()

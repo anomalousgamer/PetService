@@ -4,9 +4,11 @@ internal sealed record ChangelogSection(string Title, string[] Riddles);
 
 internal static class ReleaseNotes
 {
-    internal const string Version = "0.6.0.3";
+    internal const string Version = "0.6.0.4";
     internal static readonly ChangelogSection[] Sections =
     [
-        new("", ["Master broke something but it should be fixed now."]),
+        new("A clearer conversation", [
+            "Master is really trying to fix things.",
+        ]),
     ];
 }

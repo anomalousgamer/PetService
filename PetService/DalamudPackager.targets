@@ -8,6 +8,7 @@
            Text="The required sound library NAudio.Core.dll is missing from the build output. Restore NuGet packages and rebuild." />
     <Error Condition="!Exists('$(OutputPath)NAudio.WinMM.dll')"
            Text="The required sound library NAudio.WinMM.dll is missing from the build output. Restore NuGet packages and rebuild." />
+    <Delete Files="$(OutputPath)$(AssemblyName)/$(AssemblyName).json" />
     <DalamudPackager ProjectDir="$(ProjectDir)"
                     OutputPath="$(OutputPath)"
                     AssemblyName="$(AssemblyName)"

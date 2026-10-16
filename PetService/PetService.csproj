@@ -1,7 +1,7 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.6.0.3</Version>
-    <AssemblyVersion>0.6.0.3</AssemblyVersion>
+    <Version>0.6.0.4</Version>
+    <AssemblyVersion>0.6.0.4</AssemblyVersion>
     <Author>Anomaly</Author>
     <RepoUrl>https://github.com/anomalousgamer/PetService</RepoUrl>
     <IconUrl>https://raw.githubusercontent.com/anomalousgamer/PetService/main/images/icon.png</IconUrl>
@@ -9,7 +9,13 @@
     <Punchline>Consensual pet/master roleplay, messages, and shared routines.</Punchline>
     <Description>A private companion for consensual pet/master play. Doors remember their keys; whispers and footsteps find their place. The pet keeps a local kill switch.</Description>
     <Tags>roleplay;pet;master;private;reminder</Tags>
-    <Changelog>Master broke something but it should be fixed now.</Changelog>
+    <Changelog>• New conversations open with one click, ready to type. Rename them whenever you like.
+• Chat settings now have separate General, Names, Devices, and Backup and history pages on the Pet, Master, and website interfaces.
+• Verified devices automatically share available conversation access, including when a device connects later.
+• Conversation deletion stays inside chat, targets the conversation you chose, and removes it after the service confirms.
+• Background refreshes keep conversation controls usable and preserve your selected conversation and draft.
+• Mute, conversation pause, and global chat pause are separate controls that update without reopening the window.
+• Release packaging now supports repeated builds without a manifest copy conflict.</Changelog>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks><Platforms>x64</Platforms><PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>

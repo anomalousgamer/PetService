@@ -1,6 +1,6 @@
 # Pet Service
 
-Author: **Anomaly** · Version **0.6.0.3**
+Author: **Anomaly** · Version **0.6.0.4**
 
 A private Pet/Master connection for FINAL FANTASY XIV. Open **/toh** or **/petservice** for the Pet and password-protected Master pages. The companion website is a separate package. The service connection is included in the plugin; pairing needs only the Master's one-time code.
 
@@ -52,3 +52,10 @@ Discord controls: **!sounds &lt;pet&gt;**, **!sound &lt;pet&gt; &lt;sound-id&gt;
 Private chat has personal conversation menus: right-click a conversation to rename it, mute/unmute its visual new-message alerts, pause/resume its sending and receiving, or delete it for both participants. Deletion requires Ctrl+Shift when choosing it and a confirmation. Chat Settings provides a global pause for all of your conversations, shared across your devices; it does not pause the other participant. Messages they send remain encrypted on the server and catch up after resuming. Existing received history remains readable. Muting adds no audio and does not stop delivery.
 
 The gameplay kill switch does not affect private RP chat. Only unapproved character access pauses the pet's chat connection; the pet's own chat pause settings are independent. Sleep also leaves private RP chat usable, including typing and sending. Native FFXIV chat and Chat2 remain blocked during Sleep. An Open private chat button on the Sleep panel opens this independent window. Closed chat windows use a small metadata check while the portal/game is focused to notify about unmuted conversations; message pages load only for the open conversation. No private message text appears in those alerts.
+
+
+**New conversation** creates and selects an encrypted conversation with one click, ready for typing. There is no naming dialog or creation confirmation. Right-click it to rename it later. Chat settings is organized into **General**, **Names**, **Devices**, and **Backup and history**. Muting notifications, pausing a conversation, and pausing all of your RP chat are separate controls that update immediately.
+
+Conversation access requires one-time device fingerprint verification, rather than an approval for every new conversation. Verified devices automatically share the conversation keys they have, including when a device connects later. Both participants should verify their peer devices through an existing trusted contact. If a conversation is still waiting for access, open a device that can already read it and let it connect, or use **Share available conversation access** on its Devices tab. If all original devices and backups are lost, encrypted history cannot be recovered from the service alone.
+
+Guarded conversation deletion opens its confirmation directly in chat, including for a conversation this device cannot decrypt. It targets the conversation you selected in the menu and removes it after the service confirms; it does not open Settings or delete a different selected conversation.
