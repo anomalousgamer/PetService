@@ -104,7 +104,19 @@ internal sealed class V6MasterView
         Style.BeginCard("gag-editor","Profile editor","");Input("Profile name",ref profileName,80);
         if(Style.BeginCombo("Voice style",profileStyle)){foreach(var style in new[]{"muffled","soft","playful","custom"})if(ImGui.Selectable(style,style==profileStyle))profileStyle=style;ImGui.EndCombo();}
         ImGui.SliderInt("Strength",ref strength,1,100);if(profileStyle=="custom")Input("Custom syllable letters",ref syllables,24);
-        if(ImGui.CollapsingHeader("Excluded chat channels"))foreach(var channel in new[]{"default","say","tell","party","alliance","freecompany","linkshell","cwlinkshell","yell","shout","novice","pvpteam","echo"}){var on=excluded.Contains(channel);if(ImGui.Checkbox(channel,ref on)){if(on)excluded.Add(channel);else excluded.Remove(channel);}}
+        if(ImGui.CollapsingHeader("Excluded chat channels")) {
+            foreach(var channel in new[]{"default","say","tell","party","alliance","freecompany","linkshell","cwlinkshell","yell","shout","novice","pvpteam","echo"}) {
+                var label=channel=="linkshell"?"All Linkshells":channel=="cwlinkshell"?"All Cross-world Linkshells":channel;
+                var on=excluded.Contains(channel);if(ImGui.Checkbox(label,ref on)){if(on)excluded.Add(channel);else excluded.Remove(channel);}
+            }
+            foreach(var cross in new[]{false,true}) {
+                ImGui.Spacing();ImGui.TextUnformatted(cross?"Individual Cross-world Linkshells":"Individual Linkshells");
+                for(var slot=1;slot<=8;slot++) {
+                    var key=(cross?"cwlinkshell":"linkshell")+slot;var on=excluded.Contains(key);
+                    if(ImGui.Checkbox((cross?"Cross-world Linkshell ":"Linkshell ")+slot,ref on)){if(on)excluded.Add(key);else excluded.Remove(key);}
+                }
+            }
+        }
         Input("Local speech preview",ref gagPreview,200);ImGui.TextWrapped(SpeechGarbler.Body(gagPreview,strength,profileStyle,syllables));
         ImGui.BeginDisabled(string.IsNullOrWhiteSpace(profileName)||profileStyle=="custom"&&(syllables.Length==0||syllables.Any(c=>!char.IsLetter(c))));
         if(Style.PrimaryButton("Save gag profile",new Vector2(-1,40)))Send(session,"gagProfile",new{id=profileId.Length>0?profileId:null,name=profileName,style=profileStyle,strength,syllables,excludedChannels=excluded.ToList()});ImGui.EndDisabled();

@@ -64,7 +64,11 @@ internal sealed unsafe class ChatCommandGuard : IDisposable
                 try {
                     var parsed=SeString.Parse(command->StringPtr);
                     var first=parsed.Payloads.FirstOrDefault() as TextPayload;
-                    if(first is not null&&!options.ExcludedChannels.Contains(SpeechGarbler.Channel(first.Text??""))) {
+                    var shell=RaptureShellModule.Instance();
+                    var channel=shell==null?"":shell->CurrentChannel.ToString();
+                    var linkshell=uiModule!=null&&uiModule->LinkshellCycle is >=0 and <8?uiModule->LinkshellCycle+1:0;
+                    var crossworld=uiModule!=null&&uiModule->CrossWorldLinkshellCycle is >=0 and <8?uiModule->CrossWorldLinkshellCycle+1:0;
+                    if(first is not null&&!SpeechGarbler.Excluded(first.Text??"",options.ExcludedChannels,linkshell,crossworld,channel)) {
                         var start=SpeechGarbler.BodyStart(first.Text??"");
                         // A structured player link can carry the tell target after the command prefix.
                         if(start<0&&(first.Text??"").Trim().ToLowerInvariant() is "/tell" or "/t"&&parsed.Payloads.Any(p=>p is PlayerPayload))start=(first.Text??"").Length;

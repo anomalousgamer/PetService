@@ -1,6 +1,6 @@
 # Pet Service
 
-Author: **Anomaly** · Version **0.6.0.4**
+Author: **Anomaly** · Version **0.6.0.5**
 
 A private Pet/Master connection for FINAL FANTASY XIV. Open **/toh** or **/petservice** for the Pet and password-protected Master pages. The companion website is a separate package. The service connection is included in the plugin; pairing needs only the Master's one-time code.
 
@@ -34,7 +34,7 @@ Open **/toh chat** or **/petservice chat**, or use **Open private RP chat** on e
 
 Both participants can create and rename conversations, save speaking names and colors, switch names while writing, and copy/paste paragraphs. Enter sends; Shift+Enter adds a line. Existing messages retain the name and color used when sent. These aliases do not change account permissions.
 
-On first use, both participants open **Chat → Settings**, compare their device fingerprints through a separate trusted channel, and approve each other's device. Approving shares the conversation keys available on that device. Additional Master devices need the same approval or an encrypted backup restored from an existing Master device. Unverified or unavailable keys show a locked conversation.
+Chat devices connect automatically using the existing Pet/Master pairing. Open the chat and create a conversation to begin. There are no fingerprint approval dialogs. Messages, conversation names, and speaking names remain encrypted between the participant devices.
 
 Messages, titles and speaking identities are encrypted on the sender's device. Asura stores ciphertext and delivery metadata; it receives no private chat keys. Game chat and Discord remain separate. History is fetched in pages and survives disconnections and restarts. Local keys and drafts use Windows protected storage. Export an encrypted backup from Settings and keep its password separately; losing every device and backup loses the ability to decrypt earlier history.
 
@@ -54,8 +54,13 @@ Private chat has personal conversation menus: right-click a conversation to rena
 The gameplay kill switch does not affect private RP chat. Only unapproved character access pauses the pet's chat connection; the pet's own chat pause settings are independent. Sleep also leaves private RP chat usable, including typing and sending. Native FFXIV chat and Chat2 remain blocked during Sleep. An Open private chat button on the Sleep panel opens this independent window. Closed chat windows use a small metadata check while the portal/game is focused to notify about unmuted conversations; message pages load only for the open conversation. No private message text appears in those alerts.
 
 
-**New conversation** creates and selects an encrypted conversation with one click, ready for typing. There is no naming dialog or creation confirmation. Right-click it to rename it later. Chat settings is organized into **General**, **Names**, **Devices**, and **Backup and history**. Muting notifications, pausing a conversation, and pausing all of your RP chat are separate controls that update immediately.
+**New conversation** creates and selects an encrypted conversation with one click, ready for typing. There is no naming dialog or creation confirmation. Right-click it to rename it later. Chat settings is organized into **General**, **Names**, and **Backup and history**. Muting notifications, pausing a conversation, and pausing all of your RP chat are separate controls that update immediately.
 
-Conversation access requires one-time device fingerprint verification, rather than an approval for every new conversation. Verified devices automatically share the conversation keys they have, including when a device connects later. Both participants should verify their peer devices through an existing trusted contact. If a conversation is still waiting for access, open a device that can already read it and let it connect, or use **Share available conversation access** on its Devices tab. If all original devices and backups are lost, encrypted history cannot be recovered from the service alone.
+Chat setup uses the existing authenticated Pet/Master connection over HTTPS. Each device remembers the first public keys it receives for other devices in that profile and automatically exchanges encrypted conversation keys. Existing device keys cannot be silently replaced. There are no manual device approval screens. A new conversation includes all enrolled devices so an offline participant can read it when they reconnect. A device first added later receives older conversation keys automatically when a device that has them connects. If every original device and encrypted backup is lost, the service cannot recover old encryption keys. The service's device directory and delivered website code remain part of the trust model; automatic setup does not provide independent out-of-band identity verification.
 
 Guarded conversation deletion opens its confirmation directly in chat, including for a conversation this device cannot decrypt. It targets the conversation you selected in the menu and removes it after the service confirms; it does not open Settings or delete a different selected conversation.
+
+
+Open RP chat uses an authenticated update connection to react to messages and conversation changes as they occur. It reconnects automatically and falls back to periodic refreshes if the host interrupts the connection. Notifications carry only opaque change markers; message contents remain end-to-end encrypted. Closed chats keep their existing low-frequency metadata checks. This works through ordinary HTTPS requests on the current Node.js host and does not require a WebSocket-capable proxy.
+
+Gag profiles support separate exclusions for **Linkshell 1–8** and **Cross-world Linkshell 1–8**, alongside the existing all-Linkshell and all-Cross-world exclusions. Set them under **Gag profiles → Profile editor → Excluded chat channels** in the Master portal or website. Slot numbers follow the pet's own in-game shell list.

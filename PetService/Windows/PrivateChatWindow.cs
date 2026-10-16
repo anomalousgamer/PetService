@@ -11,9 +11,9 @@ internal sealed class PrivateChatWindow:Window,IDisposable
  private readonly Plugin plugin;internal readonly PrivateChatSession Session;
  private readonly ChatTranscript transcript=new();private readonly FileDialogManager files=new();
  private string password="",pet="",backupPassword="",search="",dialogName="",dialogError="";
- private bool master,settings,sized,openDialog,verifiedFingerprint,focusComposer;private string settingsTab="General";
+ private bool master,settings,sized,openDialog,focusComposer;private string settingsTab="General";
  private Vector2 lastSize;private DialogTarget? dialog;
- private sealed record DialogTarget(string Kind,string Id,int Generation,string Name,string Scope,bool Master,ChatDevice? Device=null);
+ private sealed record DialogTarget(string Kind,string Id,int Generation,string Name,string Scope,bool Master);
  internal bool EditingText{get;private set;}
  internal PrivateChatWindow(Plugin plugin):base("Private RP chat###PetServicePrivateChat")
  {this.plugin=plugin;Session=new(plugin);SizeConstraints=new(){MinimumSize=new(700,480),MaximumSize=new(float.MaxValue)};}
@@ -43,7 +43,7 @@ internal sealed class PrivateChatWindow:Window,IDisposable
   if(Session.Error.Length>0)ImGui.TextWrapped(Session.Error);
   else ImGui.TextWrapped(Session.PreferencesSaving?"Saving chat preferences…":Session.Notice.Length>0?Session.Notice:"Enter sends · Shift+Enter adds a line");
  }
- private string Label(ChatThread thread,int index){var title=Session.Title(thread);return title=="Conversation awaiting access"?"Conversation "+(index+1)+" · waiting for access":title;}
+ private string Label(ChatThread thread,int index){var title=Session.Title(thread);return title=="Conversation"?"Conversation "+(index+1):title;}
  private void DrawChat()
  {
   if(!ImGui.BeginTable("RP layout",2,ImGuiTableFlags.Resizable|ImGuiTableFlags.SizingStretchProp))return;
@@ -80,7 +80,7 @@ internal sealed class PrivateChatWindow:Window,IDisposable
   var thread=Session.State.Threads.FirstOrDefault(t=>t.Id==Session.Room&&!t.Deleted);
   if(thread is null){Style.Title(Session.Room.Length>0?"Creating your conversation…":"Choose a conversation","Use the list on the left, or start a new conversation.");return;}
   var title=Session.Title(thread);ImGui.TextWrapped(title);ImGui.Separator();
-  if(Session.ConversationIssue(thread) is {Length:>0} issue){Style.Title("Conversation access needed",issue);ImGui.TextWrapped("Both participants verify their chat devices once. The device that already has this conversation then shares access automatically. If every original device is lost, restore an encrypted backup.");if(ImGui.Button("Set up conversation access")){settings=true;settingsTab="Devices";}return;}
+  var issue=Session.ConversationIssue(thread);if(issue.Length>0)ImGui.TextColored(Style.Muted,"Synchronizing encrypted history…");
   if(Session.ConversationPaused(thread.Id)){ImGui.TextColored(Style.Muted,Session.Preferences.GlobalPaused?"My RP chat is paused. Existing history remains readable.":"This conversation is paused. Existing history remains readable.");}
   var available=ImGui.GetContentRegionAvail().Y;var height=Math.Clamp(plugin.Configuration.ChatWindow.Composer,60,Math.Max(60,available*.55f));
   var visible=ImGui.BeginChild("RP transcript",new(0,Math.Max(70,available-height-110)),true);
@@ -99,10 +99,10 @@ internal sealed class PrivateChatWindow:Window,IDisposable
  {
   if(!ImGui.BeginTabBar("Private chat settings"))return;
   try{
-   foreach(var page in new[]{"General","Names","Devices","Backup and history"}){
+   foreach(var page in new[]{"General","Names","Backup and history"}){
     var flags=settingsTab==page?ImGuiTabItemFlags.SetSelected:ImGuiTabItemFlags.None;
     if(!ImGui.BeginTabItem(page,flags))continue;
-    settingsTab="";try{switch(page){case "General":GeneralSettings();break;case "Names":NameSettings();break;case "Devices":DeviceSettings();break;default:BackupSettings();break;}}finally{ImGui.EndTabItem();}
+    settingsTab="";try{switch(page){case "General":GeneralSettings();break;case "Names":NameSettings();break;default:BackupSettings();break;}}finally{ImGui.EndTabItem();}
    }
   }finally{ImGui.EndTabBar();}
  }
@@ -123,21 +123,6 @@ internal sealed class PrivateChatWindow:Window,IDisposable
   }
   if(vault.Personas.Count<40&&ImGui.Button("+ Add speaking name")){vault.Personas.Add(new());Session.Save();}
  }
- private void DeviceSettings()
- {
-  var vault=Session.Vault!;Style.Title("Conversation access","Both participants open this page. Compare device fingerprints using your existing trusted contact, then verify the matching device. Existing conversation keys are shared automatically between verified devices.");
-  if(Session.State.Devices.Count==0)ImGui.TextWrapped("Waiting for chat devices to connect…");
-  foreach(var device in Session.State.Devices){
-   ImGui.PushID(device.Id);try{
-    var own=device.Id==vault.Identity.Id;ImGui.TextUnformatted(own?"This device":device.Role=="master"?"Master device":"Pet device");
-    ImGui.TextColored(Style.Muted,own?"Your protected chat identity":Session.DeviceVerified(device)?"Verified":"Needs verification");
-    var fingerprint=PrivateChatCrypto.Fingerprint(device);ImGui.TextWrapped(fingerprint);if(ImGui.Button("Copy fingerprint"))ImGui.SetClipboardText(fingerprint);
-    if(!own){ImGui.SameLine();if(Session.DeviceVerified(device)){if(ImGui.Button("Share available conversation access"))Session.ShareKeys(device);}else if(ImGui.Button("Verify this device…"))OpenAction("verify",device:device);}
-    ImGui.Separator();
-   }finally{ImGui.PopID();}
-  }
-  ImGui.TextWrapped("A device can share only the conversations it can already open. To recover older conversations, open an original device or restore its encrypted backup. New devices never receive private keys from the server.");
- }
  private void BackupSettings()
  {
   var vault=Session.Vault!;Style.Title("Encrypted backup","Keep an encrypted backup if you want to restore this device's conversation access later.");
@@ -150,29 +135,28 @@ internal sealed class PrivateChatWindow:Window,IDisposable
   if(master&&ImGui.Button("Clear all conversations for "+pet+"…")&&Chord())OpenAction("all");
  }
  private bool Chord(){if(ImGui.GetIO().KeyCtrl&&ImGui.GetIO().KeyShift)return true;Session.Notice="Hold Ctrl+Shift while clicking the action, then confirm.";return false;}
- private void OpenAction(string kind,ChatThread? thread=null,string name="",ChatDevice? device=null)
+ private void OpenAction(string kind,ChatThread? thread=null,string name="")
  {
-  dialog=new(kind,thread?.Id??"",thread?.Generation??0,name,Session.Vault?.Scope??"",Session.Master,device);dialogName=kind=="rename"?name:"";dialogError="";verifiedFingerprint=false;openDialog=true;
+  dialog=new(kind,thread?.Id??"",thread?.Generation??0,name,Session.Vault?.Scope??"",Session.Master);dialogName=kind=="rename"?name:"";dialogError="";openDialog=true;
  }
  private void DrawDialog()
  {
   if(dialog is null)return;var target=dialog;
   if(target.Scope!=(Session.Vault?.Scope??"")||target.Master!=Session.Master){dialog=null;return;}
-  var title=target.Kind switch{"rename"=>"Rename conversation","verify"=>"Verify chat device","delete"=>"Delete conversation for both",_=>"Clear conversation history"};title+="###PetServiceChatAction";
+  var title=target.Kind switch{"rename"=>"Rename conversation","delete"=>"Delete conversation for both",_=>"Clear conversation history"};title+="###PetServiceChatAction";
   if(openDialog){ImGui.OpenPopup(title);openDialog=false;}
   ImGui.SetNextWindowSize(new(470*ImGuiHelpers.GlobalScale,0),ImGuiCond.Appearing);var open=true;
   if(!ImGui.BeginPopupModal(title,ref open,ImGuiWindowFlags.AlwaysAutoResize)){if(!open)dialog=null;return;}
   try{
    var writing=target.Kind=="rename";
    if(writing){ImGui.TextWrapped("Choose a new name for this conversation.");if(ImGui.IsWindowAppearing())ImGui.SetKeyboardFocusHere();ImGui.SetNextItemWidth(-1);ImGui.InputTextWithHint("##ConversationName","Conversation name",ref dialogName,120);EditingText|=ImGui.IsItemActive();}
-   else if(target.Kind=="verify"){ImGui.TextWrapped("Compare this fingerprint with the device shown to the other participant.");ImGui.TextWrapped(PrivateChatCrypto.Fingerprint(target.Device!));ImGui.Checkbox("I compared this fingerprint",ref verifiedFingerprint);}
    else ImGui.TextWrapped(target.Kind=="delete"?"Delete “"+target.Name+"” and its messages for both participants?":target.Kind=="all"?"Clear every conversation for this profile for both participants?":"Clear the messages in “"+target.Name+"” for both participants?");
    if(dialogError.Length>0)ImGui.TextWrapped(dialogError);
-   ImGui.Spacing();ImGui.BeginDisabled(Session.Paused||writing&&string.IsNullOrWhiteSpace(dialogName)||target.Kind=="verify"&&!verifiedFingerprint);
-   try{if(ImGui.Button(target.Kind switch{"rename"=>"Save name","verify"=>"Verify and share access","delete"=>"Delete for both",_=>"Confirm permanent clear"})){
+   ImGui.Spacing();ImGui.BeginDisabled(Session.Paused||writing&&string.IsNullOrWhiteSpace(dialogName));
+   try{if(ImGui.Button(target.Kind switch{"rename"=>"Save name","delete"=>"Delete for both",_=>"Confirm permanent clear"})){
     try{
      if(target.Id.Length>0&&Session.State.Threads.FirstOrDefault(t=>t.Id==target.Id&&!t.Deleted)?.Generation!=target.Generation)throw new InvalidOperationException("This conversation changed. Close this dialog and review it first.");
-     switch(target.Kind){case "rename":Session.RenameConversation(target.Id,dialogName.Trim());break;case "delete":Session.DeleteConversation(target.Id,target.Generation);break;case "verify":Session.Approve(target.Device!);break;default:if(target.Kind=="all")Session.Clear(false,true);else{Session.Choose(target.Id);Session.Clear(false);}break;}
+     switch(target.Kind){case "rename":Session.RenameConversation(target.Id,dialogName.Trim());break;case "delete":Session.DeleteConversation(target.Id,target.Generation);break;default:if(target.Kind=="all")Session.Clear(false,true);else{Session.Choose(target.Id);Session.Clear(false);}break;}
      dialog=null;ImGui.CloseCurrentPopup();
     }catch(Exception e){dialogError=e.Message;Session.ReportError("a confirmed chat action",e);}
    }}finally{ImGui.EndDisabled();}

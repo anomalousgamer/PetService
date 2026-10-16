@@ -31,7 +31,7 @@ internal sealed class SettingsWindow : Window,IDisposable
     private void DrawContent()
     {
         EditingText=false;
-        Style.Title("PET SERVICE","Pet and Master controls · 0.6.0.4");
+        Style.Title("PET SERVICE","Pet and Master controls · 0.6.0.5");
         ImGui.BeginChild("PetServiceMain",new Vector2(0,-85),false);
         var masterShown=false;
         if(ImGui.BeginTabBar("roles")) {
@@ -111,7 +111,7 @@ internal sealed class SettingsWindow : Window,IDisposable
         var colour=System.Numerics.Vector3.One;
         if(uint.TryParse(hex.TrimStart('#'),System.Globalization.NumberStyles.HexNumber,null,out var rgb))colour=new((rgb>>16)/255f,((rgb>>8)&255)/255f,(rgb&255)/255f);
         ImGui.SetNextItemWidth(180*Dalamud.Interface.Utility.ImGuiHelpers.GlobalScale);
-        if(ImGui.ColorEdit3("Message color",ref colour,ImGuiColorEditFlags.PickerHueWheel|ImGuiColorEditFlags.DisplayHex)) {
+        if(ImGui.ColorEdit3("Message color",ref colour,ImGuiColorEditFlags.PickerHueBar|ImGuiColorEditFlags.DisplayHex|ImGuiColorEditFlags.NoOptions)) {
             var chosen=$"#{(int)Math.Round(colour.X*255):x2}{(int)Math.Round(colour.Y*255):x2}{(int)Math.Round(colour.Z*255):x2}";
             plugin.Mutate(c=>c.MasterChatRgb=chosen);
         }

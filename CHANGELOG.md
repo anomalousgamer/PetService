@@ -1,8 +1,23 @@
 # Changelog
 
+## 0.6.0.5 — Chat without the extra steps
+
+- Paired Pet and Master devices set up encrypted RP chat automatically. Device verification dialogs are removed.
+- New conversation opens straight into the message box on the Pet, Master, and website interfaces.
+- Open chats receive server-triggered updates for new messages, conversation changes, and deletion, with automatic reconnection.
+- Square color pickers with a hue bar replace the triangle wheels throughout the in-game plugin.
+- Gag profiles can exclude each Linkshell and Cross-world Linkshell individually, from slots 1 through 8.
+
 ## 0.6.0.4 — A clearer conversation
 
-- Master is really trying to fix things.
+- New conversations open with one click, ready to type. Rename them whenever you like.
+- Chat settings now have separate General, Names, Devices, and Backup and history pages on the Pet, Master, and website interfaces.
+- Verified devices automatically share available conversation access, including when a device connects later.
+- Conversation deletion stays inside chat, targets the conversation you chose, and removes it after the service confirms.
+- Background refreshes keep conversation controls usable and preserve your selected conversation and draft.
+- Mute, conversation pause, and global chat pause are separate controls that update without reopening the window.
+
+- Release packaging now supports repeated builds without a manifest copy conflict.
 
 ## 0.6.0.3
 

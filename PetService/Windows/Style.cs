@@ -31,8 +31,8 @@ internal static class Style
         ImGui.SameLine();ImGui.TextUnformatted(hex.ToUpperInvariant());
         var changed=false;
         if(ImGui.BeginPopup("Choose color")) {
-            ImGui.SetNextItemWidth(280*Dalamud.Interface.Utility.ImGuiHelpers.GlobalScale);
-            if(ImGui.ColorPicker3("##picker",ref color,ImGuiColorEditFlags.PickerHueWheel|ImGuiColorEditFlags.DisplayHex)) {
+            ImGui.SetNextItemWidth(240*Dalamud.Interface.Utility.ImGuiHelpers.GlobalScale);
+            if(ImGui.ColorPicker3("##picker",ref color,ImGuiColorEditFlags.PickerHueBar|ImGuiColorEditFlags.DisplayHex|ImGuiColorEditFlags.NoOptions)) {
                 hex=$"#{Math.Clamp((int)Math.Round(color.X*255),0,255):x2}{Math.Clamp((int)Math.Round(color.Y*255),0,255):x2}{Math.Clamp((int)Math.Round(color.Z*255),0,255):x2}";changed=true;
             }
             if(ImGui.Button("Done"))ImGui.CloseCurrentPopup();ImGui.EndPopup();
